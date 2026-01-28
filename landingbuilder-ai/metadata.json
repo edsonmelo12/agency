@@ -1,0 +1,5 @@
+{
+  "name": "LandingBuilder AI",
+  "description": "An intelligent landing page and institutional website generator powered by Gemini AI, featuring real-time preview and Tailwind CSS export.",
+  "requestFramePermissions": []
+}

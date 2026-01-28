@@ -1,0 +1,40 @@
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@400;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: "Bebas Neue", sans-serif;
+  --font-body: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --color-ink: #0B0F14;
+  --color-slate: #374151;
+  --color-paper: #F6F7FB;
+  --color-panel: #FFFFFF;
+  --color-primary: #2563EB;
+  --color-accent: #F59E0B;
+  --color-success: #10B981;
+  --color-danger: #EF4444;
+  --color-border: #E5E7EB;
+  --shadow-card: 0 10px 30px rgba(15, 23, 42, 0.12);
+}
+
+.dark {
+  --color-ink: #F8FAFC;
+  --color-slate: #94A3B8;
+  --color-paper: #0B0F14;
+  --color-panel: #0F172A;
+  --color-primary: #3B82F6;
+  --color-accent: #FBBF24;
+  --color-success: #34D399;
+  --color-danger: #F87171;
+  --color-border: #1F2937;
+  --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
