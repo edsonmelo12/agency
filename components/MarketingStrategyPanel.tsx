@@ -1,8 +1,10 @@
 import React from 'react';
+import { Button } from './ui/BaseComponents';
 import { PaidCampaignPlan } from '../types';
 
 interface Props {
   plan: PaidCampaignPlan | null;
+  onSavePlan?: () => void;
 }
 
 const SectionCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
@@ -12,7 +14,7 @@ const SectionCard: React.FC<{ title: string; children: React.ReactNode }> = ({ t
   </div>
 );
 
-const MarketingStrategyPanel: React.FC<Props> = ({ plan }) => {
+const MarketingStrategyPanel: React.FC<Props> = ({ plan, onSavePlan }) => {
   if (!plan) {
     return (
     <div className="h-full flex items-center justify-center text-slate text-sm">
@@ -24,7 +26,21 @@ const MarketingStrategyPanel: React.FC<Props> = ({ plan }) => {
   return (
     <div className="h-full overflow-y-auto p-8 space-y-8">
       <div className="rounded-3xl border border-border bg-gradient-to-br from-panel to-slate-50 dark:from-slate-950 dark:to-slate-900 p-10 shadow-sm">
-        <div className="text-[10px] font-black uppercase tracking-widest text-success mb-2">Plano de Campanha</div>
+        <div className="flex items-center justify-between gap-4 mb-4">
+          <div className="text-[10px] font-black uppercase tracking-widest text-success">Plano de Campanha</div>
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate bg-panel px-2 py-1 rounded-full border border-border">Salvo no projeto</span>
+            {onSavePlan && (
+              <Button
+                variant="secondary"
+                className="px-3 py-1 text-[10px] font-black uppercase"
+                onClick={onSavePlan}
+              >
+                Salvar plano
+              </Button>
+            )}
+          </div>
+        </div>
         <h2 className="text-3xl md:text-4xl font-display text-ink mb-4">Estratégia de Marketing Patrocinado</h2>
         <p className="text-slate max-w-3xl">{plan.summary}</p>
       </div>

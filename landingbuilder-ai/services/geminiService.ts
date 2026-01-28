@@ -2,6 +2,13 @@
 import { GoogleGenAI, Part, Type, Modality } from "@google/genai";
 import { GenerationOptions, PageType, Section, Producer, ProductInfo, ImageAspectRatio, VisualStyle, Ebook, EbookChapter, VslScript, SeoSettings, AssetPreset, ImageExportFormat } from "../types";
 
+const GEMINI_API_KEY = (import.meta.env.VITE_GEMINI_API_KEY ?? import.meta.env.VITE_API_KEY) as string | undefined;
+if (!GEMINI_API_KEY) {
+  throw new Error("GEMINI_API_KEY não configurada. Defina VITE_GEMINI_API_KEY ou VITE_API_KEY no .env.");
+}
+
+const createGenAiClient = () => new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+
 /**
  * Limpa a resposta da IA, removendo blocos de código Markdown e ruídos de texto explicativo.
  * Crucial para manter a estabilidade do JSON.parse().
@@ -80,7 +87,7 @@ const postProcessGeneratedHTML = (sections: Section[], producer: Producer, produ
  * Utiliza o modelo Pro com thinkingBudget para criar copy persuasiva e estrutura HTML Tailwind.
  */
 export const generateLandingPage = async (options: GenerationOptions, producer: Producer, product: ProductInfo): Promise<Section[]> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = createGenAiClient();
   const systemInstruction = `Você é um Web Designer e Copywriter Brasileiro de Elite. 
   REQUISITO: Gere uma Landing Page profissional em Português do Brasil (PT-BR). 
   GRAMÁTICA: Use ortografia brasileira impecável. PROIBIDO o uso de palavras como "feature", "sales", "layout" ou qualquer termo em inglês no conteúdo final.
@@ -126,7 +133,7 @@ export const generateStudioImage = async (
 ): Promise<string> => {
   const isHighRes = quality === 'ultra';
   const model = isHighRes ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image';
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = createGenAiClient();
   
   const mapRatio = (r: string): string => {
     const supported = ["1:1", "3:4", "4:3", "9:16", "16:9"];
@@ -168,7 +175,7 @@ export const generateStudioImage = async (
  * Usa Google Search para extrair inteligência de mercado de URLs de concorrentes.
  */
 export const analyzeExternalProduct = async (url: string): Promise<any> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = createGenAiClient();
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: `Analise as informações do produto nesta URL: ${url}. Extraia nome, descrição, preço e persona.`,
@@ -205,7 +212,7 @@ export const analyzeExternalProduct = async (url: string): Promise<any> => {
  * GERAÇÃO DE PAUTA DE E-BOOK
  */
 export const generateBookOutline = async (title: string, topic: string, author: string, product: ProductInfo): Promise<any> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = createGenAiClient();
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
     contents: `Crie um outline para um e-book chamado "${title}" sobre "${topic}". Autor: ${author}.`,
@@ -219,7 +226,7 @@ export const generateBookOutline = async (title: string, topic: string, author: 
  * Usa thinkingBudget para garantir que o conteúdo seja informativo e longo.
  */
 export const generateChapterContent = async (bookTitle: string, chapter: any, expert: Producer, product: ProductInfo): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = createGenAiClient();
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
     contents: `Escreva o conteúdo completo do capítulo "${chapter.title}" do e-book "${bookTitle}".`,
@@ -232,7 +239,7 @@ export const generateChapterContent = async (bookTitle: string, chapter: any, ex
  * GERAÇÃO DE ROTEIRO VSL
  */
 export const generateVslScript = async (model: string, duration: string, expert: Producer, product: ProductInfo): Promise<any> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = createGenAiClient();
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
     contents: `Gere um roteiro de VSL usando o modelo ${model} para o produto ${product.name}.`,
@@ -246,7 +253,7 @@ export const generateVslScript = async (model: string, duration: string, expert:
  * Retorna dados PCM brutos (Raw PCM) que precisam de decodificação manual.
  */
 export const generateSpeech = async (text: string, voiceName: string = 'Kore'): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = createGenAiClient();
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash-preview-tts",
     contents: [{ parts: [{ text }] }],
@@ -259,7 +266,7 @@ export const generateSpeech = async (text: string, voiceName: string = 'Kore'): 
 };
 
 export const refineLandingPageContent = async (sections: Section[], instruction: string): Promise<Section[]> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = createGenAiClient();
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
     contents: `Refine: "${instruction}" nas seções.`,
@@ -269,7 +276,7 @@ export const refineLandingPageContent = async (sections: Section[], instruction:
 };
 
 export const injectAssetIntoPage = async (type: 'ebook' | 'vsl', asset: any, expert: Producer, product: ProductInfo): Promise<Section> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = createGenAiClient();
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: `Crie seção HTML para promover ${type}: ${asset.title}.`,
@@ -280,7 +287,7 @@ export const injectAssetIntoPage = async (type: 'ebook' | 'vsl', asset: any, exp
 };
 
 export const generateCreativeCampaign = async (sections: Section[], expert: Producer, product: ProductInfo): Promise<any[]> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = createGenAiClient();
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
     contents: `Crie 3 anúncios para este funil.`,
@@ -290,7 +297,7 @@ export const generateCreativeCampaign = async (sections: Section[], expert: Prod
 };
 
 export const generateABVariation = async (sections: Section[], hypothesis: string, expert: Producer, product: ProductInfo): Promise<Section[]> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = createGenAiClient();
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
     contents: `Gere variação baseada na hipótese: "${hypothesis}".`,

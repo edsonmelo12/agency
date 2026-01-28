@@ -127,7 +127,7 @@ const StudioModule: React.FC<Props> = ({ activeProduct, onGenerateImage, onSyncC
       } else if (/ERR_NAME_NOT_RESOLVED|Failed to fetch|NetworkError/i.test(message)) {
         alert("Falha de rede/DNS ao acessar a IA. Verifique sua conexão e se o domínio generativelanguage.googleapis.com está liberado (Brave Shields/DNS).");
       } else {
-        alert("Erro ao sugerir ativos de mídia. Tente novamente.");
+        alert(`Erro ao sugerir ativos de mídia. ${message || 'Tente novamente.'}`);
       }
     } finally {
       setIsSyncing(false);

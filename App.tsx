@@ -8,13 +8,30 @@ import VslPanel from './components/VslPanel';
 import MarketingStrategyPanel from './components/MarketingStrategyPanel';
 import { 
   GenerationOptions, Section, ActiveElement, Project, 
-  PageType, MarketingSettings, SeoSettings, Producer, ProductInfo, StudioImage, VisualStyle, ImageAspectRatio, ImageExportFormat,
-  Ebook, VslScript, AssetPreset, EbookConfig, PaidCampaignInput, PaidCampaignPlan
+  PageType, MarketingSettings, SeoSettings, Producer, ProductInfo, StudioImage, ImageFallbackReason, VisualStyle, ImageAspectRatio, ImageExportFormat,
+  Ebook, VslScript, AssetPreset, EbookConfig, PaidCampaignInput, PaidCampaignPlan, AiFallbackLog, AiPlanResult
 } from './types';
 import { generateLandingPage, generateStudioImage, generateBookOutline, generateChapterContent, reviewChapterContent, generateVslScript, refineLandingPageContent, injectAssetIntoPage, generateCreativeCampaign, generateSeoFromSections, generateMarketingIdeas, generatePaidAdsPlan, generatePaidCampaignStrategy, regenerateSectionWithCRO, hydrateSectionContent } from './services/geminiService';
 import { getAllExperts, getProductsByExpert, getProjectsByProduct, saveProject, deleteProject, getAllStudioImages, saveStudioImage, deleteStudioImage, saveEbook, getEbooksByProduct, saveProduct, saveExpert, deleteEbook, saveVslScript, getVslScriptsByProduct, openDB, clearAllData } from './services/dbService';
 
 type NavModule = 'strategy' | 'product' | 'builder' | 'analytics' | 'studio' | 'ebook' | 'vsl' | 'library' | 'marketing';
+
+const formatMarketingError = (error: unknown) => {
+  if (!error) return 'Falha ao gerar o plano de campanha.';
+  if (typeof error === 'string') {
+    return error.toLowerCase().includes('quota') ? 'Cota da API excedida. Aguarde alguns minutos.' : error;
+  }
+  const err = error as any;
+  const message = err.message || (err.error && err.error.message) || '';
+  const lower = message.toLowerCase();
+  if (err?.code === 429 || err?.status === 429 || lower.includes('quota exceeded') || lower.includes('resource_exhausted')) {
+    return 'Cota da API excedida. Aguarde alguns minutos ou valide suas credenciais.';
+  }
+  if (message) {
+    return `Falha ao gerar o plano: ${message}`;
+  }
+  return 'Falha ao gerar o plano de campanha.';
+};
 
 // Extend window for AI Studio helpers
 declare global {
@@ -29,6 +46,25 @@ declare global {
     aistudio: AIStudio;
   }
 }
+
+const safeLocalStorage = {
+  read(key: string, fallback: string | null = null) {
+    if (typeof window === 'undefined') return fallback;
+    try {
+      return window.localStorage?.getItem(key) ?? fallback;
+    } catch {
+      return fallback;
+    }
+  },
+  write(key: string, value: string) {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage?.setItem(key, value);
+    } catch {
+      // ignore
+    }
+  }
+};
 
 const defaultGenerationOptions: GenerationOptions = {
   pageType: PageType.SALES,
@@ -59,7 +95,7 @@ const defaultGenerationOptions: GenerationOptions = {
 
 const App: React.FC = () => {
   const [activeModule, setActiveModule] = useState<NavModule>('strategy');
-  const [uiTheme, setUiTheme] = useState<'light' | 'dark'>((localStorage.getItem('lb_ui_theme') as any) || 'dark');
+  const [uiTheme, setUiTheme] = useState<'light' | 'dark'>(() => (safeLocalStorage.read('lb_ui_theme', 'dark') as 'light' | 'dark'));
   const [isLoading, setIsLoading] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
@@ -78,6 +114,9 @@ const App: React.FC = () => {
   const [activeEbookId, setActiveEbookId] = useState<string | null>(null);
   const [vslScript, setVslScript] = useState<VslScript | null>(null);
   const [marketingPlan, setMarketingPlan] = useState<PaidCampaignPlan | null>(null);
+  const [marketingError, setMarketingError] = useState<string | null>(null);
+  const [fallbackLog, setFallbackLog] = useState<AiFallbackLog | null>(null);
+  const [isFallbackDetailsOpen, setFallbackDetailsOpen] = useState(false);
 
   const [marketing, setMarketing] = useState<MarketingSettings>({ metaPixelId: '', googleAnalyticsId: '' });
   const [seo, setSeo] = useState<SeoSettings>({ title: '', description: '', keywords: '' });
@@ -92,7 +131,7 @@ const App: React.FC = () => {
     const init = async () => {
       try {
         const experts = await getAllExperts();
-        const savedExpertId = localStorage.getItem('lb_active_expert_id');
+        const savedExpertId = safeLocalStorage.read('lb_active_expert_id', '');
         if (experts.length > 0) {
           const found = experts.find(e => e.id === savedExpertId);
           setActiveExpert(found || experts[0]);
@@ -108,8 +147,8 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (activeExpert) {
-      localStorage.setItem('lb_active_expert_id', activeExpert.id);
-      const savedProductId = localStorage.getItem('lb_active_product_id');
+      safeLocalStorage.write('lb_active_expert_id', activeExpert.id);
+      const savedProductId = safeLocalStorage.read('lb_active_product_id', '');
       
       getProductsByExpert(activeExpert.id).then(prods => {
         if (prods.length > 0) {
@@ -147,6 +186,17 @@ const App: React.FC = () => {
     } as GenerationOptions;
   };
 
+  const describeImageFallback = (reason?: ImageFallbackReason) => {
+    if (!reason) return '';
+    const labels: Record<ImageFallbackReason, string> = {
+      quota: ' - modo leve (cota)',
+      model: ' - modelo alternativo',
+      reference: ' - versão sem referência',
+      other: ' - fallback'
+    };
+    return labels[reason] || '';
+  };
+
   const applyProject = (proj: Project | null) => {
     if (!proj) {
       setActiveProject(null);
@@ -162,12 +212,13 @@ const App: React.FC = () => {
       setCurrentOptions(mergedOptions);
       if (proj.options?.marketing) setMarketing(proj.options.marketing);
       if (proj.options?.seo) setSeo(proj.options.seo);
+      setMarketingPlan(proj.options?.marketingPlan || null);
     }
   };
 
   useEffect(() => {
     if (activeProduct) {
-      localStorage.setItem('lb_active_product_id', activeProduct.id);
+      safeLocalStorage.write('lb_active_product_id', activeProduct.id);
       getEbooksByProduct(activeProduct.id).then(setEbooks);
       getVslScriptsByProduct(activeProduct.id).then(scripts => {
         setVslScript(scripts && scripts.length > 0 ? scripts[0] : null);
@@ -214,7 +265,7 @@ const App: React.FC = () => {
       versionName,
       isPrimary: activeProject?.isPrimary ?? (projectVersions.length === 0),
       sections: finalSections, 
-      options: { ...currentOptions, marketing, seo }, 
+      options: { ...currentOptions, marketing, seo, marketingPlan }, 
       createdAt: activeProject?.createdAt || Date.now(), 
       updatedAt: Date.now()
     };
@@ -258,7 +309,7 @@ const App: React.FC = () => {
       versionName,
       isPrimary: projectVersions.length === 0,
       sections: base?.sections || sections,
-      options: base?.options || { ...currentOptions, marketing, seo },
+      options: base?.options || { ...currentOptions, marketing, seo, marketingPlan },
       createdAt: now,
       updatedAt: now
     };
@@ -380,8 +431,8 @@ const App: React.FC = () => {
         await safeSave(data.ebooks, saveEbook);
         await safeSave(data.vsl_scripts, saveVslScript);
 
-        if (data.activeExpertId) localStorage.setItem('lb_active_expert_id', data.activeExpertId);
-        if (data.activeProductId) localStorage.setItem('lb_active_product_id', data.activeProductId);
+        if (data.activeExpertId) safeLocalStorage.write('lb_active_expert_id', data.activeExpertId);
+        if (data.activeProductId) safeLocalStorage.write('lb_active_product_id', data.activeProductId);
 
         setSaveMessage("📦 Sucesso! Reiniciando...");
         setTimeout(() => window.location.reload(), 1500);
@@ -446,7 +497,7 @@ const App: React.FC = () => {
             versionName,
             isPrimary: false,
             sections: [],
-            options: { ...currentOptions, marketing, seo },
+            options: { ...currentOptions, marketing, seo, marketingPlan },
             createdAt: now,
             updatedAt: now
           };
@@ -702,15 +753,27 @@ const App: React.FC = () => {
         });
 
       const isNearWhite = (r: number, g: number, b: number) => r > 235 && g > 235 && b > 235;
+      const colorDist = (a: number[], b: number[]) => {
+        const dr = a[0] - b[0];
+        const dg = a[1] - b[1];
+        const db = a[2] - b[2];
+        return Math.sqrt(dr * dr + dg * dg + db * db);
+      };
+      const colorBrightness = (c: number[]) => (c[0] + c[1] + c[2]) / 3;
+      const colorSpread = (c: number[]) => Math.max(c[0], c[1], c[2]) - Math.min(c[0], c[1], c[2]);
 
-      const detectWhiteBackdrop = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
+      const detectBackdrop = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
         const samples = [
           ctx.getImageData(4, 4, 1, 1).data,
           ctx.getImageData(w - 5, 4, 1, 1).data,
           ctx.getImageData(4, h - 5, 1, 1).data,
           ctx.getImageData(w - 5, h - 5, 1, 1).data
-        ];
-        return samples.every(d => isNearWhite(d[0], d[1], d[2]));
+        ].map(d => [d[0], d[1], d[2]]);
+        const avg = samples.reduce((acc, c) => [acc[0] + c[0], acc[1] + c[1], acc[2] + c[2]], [0, 0, 0]).map(v => Math.round(v / samples.length));
+        const similar = samples.every(c => colorDist(c, avg) < 18);
+        const bright = colorBrightness(avg) > 200;
+        const neutral = colorSpread(avg) < 22;
+        return { avg, eligible: similar && (bright || neutral), isWhite: isNearWhite(avg[0], avg[1], avg[2]) };
       };
 
       const buildProductCutout = (img: HTMLImageElement) => {
@@ -723,21 +786,30 @@ const App: React.FC = () => {
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = imageData.data;
         const hasAlpha = data.some((_, i) => i % 4 === 3 && data[i] < 255);
-        const whiteBackdrop = detectWhiteBackdrop(ctx, canvas.width, canvas.height);
-        if (!hasAlpha && whiteBackdrop) {
-          const threshold = 240;
+        const backdrop = detectBackdrop(ctx, canvas.width, canvas.height);
+        if (!hasAlpha && backdrop.eligible) {
+          const threshold = backdrop.isWhite ? 240 : 220;
+          const target = backdrop.avg;
           for (let i = 0; i < data.length; i += 4) {
-            if (isNearWhite(data[i], data[i + 1], data[i + 2])) {
-              data[i + 3] = 0;
-            }
+            const dr = data[i] - target[0];
+            const dg = data[i + 1] - target[1];
+            const db = data[i + 2] - target[2];
+            const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+            if (dist < threshold) data[i + 3] = 0;
           }
           ctx.putImageData(imageData, 0, 0);
+        }
+        // Feather edges lightly
+        for (let i = 0; i < data.length; i += 4) {
+          const a = data[i + 3];
+          if (a > 0 && a < 40) data[i + 3] = 0;
+          else if (a >= 40 && a < 120) data[i + 3] = Math.round(a * 0.7);
         }
         let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
         for (let y = 0; y < canvas.height; y += 2) {
           for (let x = 0; x < canvas.width; x += 2) {
             const idx = (y * canvas.width + x) * 4 + 3;
-            if (data[idx] > 10) {
+            if (data[idx] > 20) {
               minX = Math.min(minX, x);
               minY = Math.min(minY, y);
               maxX = Math.max(maxX, x);
@@ -748,7 +820,7 @@ const App: React.FC = () => {
         if (minX > maxX || minY > maxY) {
           return { canvas, bbox: { x: 0, y: 0, w: canvas.width, h: canvas.height }, hasAlpha };
         }
-        return { canvas, bbox: { x: minX, y: minY, w: maxX - minX, h: maxY - minY }, hasAlpha: hasAlpha || whiteBackdrop };
+        return { canvas, bbox: { x: minX, y: minY, w: maxX - minX, h: maxY - minY }, hasAlpha: hasAlpha || backdrop.eligible };
       };
 
       let result;
@@ -787,7 +859,8 @@ const App: React.FC = () => {
             url: compositeUrl,
             model: bgResult.model,
             usedReference: true,
-            fallbackUsed: bgResult.fallbackUsed
+            fallbackUsed: bgResult.fallbackUsed,
+            fallbackReason: bgResult.fallbackReason
           };
         } else {
           result = await attemptGenerate(baseImage);
@@ -827,12 +900,14 @@ const App: React.FC = () => {
         modelUsed: result.model,
         usedReference: result.usedReference,
         fallbackUsed: result.fallbackUsed,
+        fallbackReason: result.fallbackReason,
         adCopy: ac,
         adType: at
       }; 
       await saveStudioImage(img); 
       setStudioImages(prev => [img, ...prev]); 
-      setSaveMessage(`✨ Arte Renderizada (${result.model})`);
+      const fallbackLabel = describeImageFallback(result.fallbackReason);
+      setSaveMessage(`✨ Arte Renderizada (${result.model}${fallbackLabel})`);
     } catch (err: any) { 
       if (err.message.includes("Requested entity was not found")) {
         alert("Sua chave API precisa de faturamento. Selecione outra.");
@@ -864,6 +939,15 @@ const App: React.FC = () => {
     }
     await checkApiKey();
     return generatePaidAdsPlan(activeExpert, activeProduct, objective, platform, budget);
+  };
+
+  const handleSyncCreatives = async () => {
+    if (!activeExpert || !activeProduct) {
+      alert("Selecione expert e oferta.");
+      return [];
+    }
+    await checkApiKey();
+    return generateCreativeCampaign(sections, activeExpert, activeProduct);
   };
 
   const handleSaveCanvasImage = async (dataUrl: string, meta: { prompt: string; preset: AssetPreset }) => {
@@ -939,15 +1023,26 @@ const App: React.FC = () => {
     if (!activeExpert || !activeProduct) return alert("Selecione expert e oferta.");
     await checkApiKey();
     setIsLoading(true);
+    setMarketingError(null);
     try {
-      const plan = await generatePaidCampaignStrategy(activeExpert, activeProduct, input);
+      const result: AiPlanResult = await generatePaidCampaignStrategy(activeExpert, activeProduct, input);
+      const plan = result.plan;
+      if (result.provider === 'OpenRouter') {
+        triggerAiFallback(result.notice || 'Fallback para OpenRouter após quota do Gemini.');
+      }
       setMarketingPlan(plan);
       setActiveModule('marketing');
+      handleSaveProject();
       setSaveMessage("✅ Plano de campanha gerado");
       setTimeout(() => setSaveMessage(null), 2000);
     } catch (e) {
       console.error(e);
-      alert("Falha ao gerar plano de campanha.");
+      const message = formatMarketingError(e);
+      if (/quota|exceeded|429/i.test(message)) {
+        triggerAiFallback(message);
+      }
+      setMarketingError(message);
+      alert(message);
     } finally {
       setIsLoading(false);
     }
@@ -990,7 +1085,16 @@ const App: React.FC = () => {
             </button>
           ))}
         </div>
-        <button onClick={() => setUiTheme(uiTheme === 'light' ? 'dark' : 'light')} className="p-3 text-slate-500 hover:text-white"> {uiTheme === 'light' ? '🌙' : '☀️'} </button>
+        <button
+          onClick={() => {
+            const nextTheme = uiTheme === 'light' ? 'dark' : 'light';
+            setUiTheme(nextTheme);
+            safeLocalStorage.write('lb_ui_theme', nextTheme);
+          }}
+          className="p-3 text-slate-500 hover:text-white"
+        >
+          {uiTheme === 'light' ? '🌙' : '☀️'}
+        </button>
       </nav>
 
       <Sidebar 
@@ -1021,11 +1125,17 @@ const App: React.FC = () => {
         }}
         onInjectAsset={(type, asset) => injectAssetIntoPage(type, asset, activeExpert!, activeProduct!).then(s => setSections(prev => [...prev, s]))}
         onGenerateImage={handleGenerateImageRequest}
-        onSyncCreatives={() => generateCreativeCampaign(sections, activeExpert!, activeProduct!)}
+        onSyncCreatives={handleSyncCreatives}
         onGenerateMarketingIdeas={handleGenerateMarketingIdeas}
         onGeneratePaidAdsPlan={handleGeneratePaidAdsPlan}
         onSaveCanvasImage={handleSaveCanvasImage}
         onGeneratePaidStrategy={handleGeneratePaidStrategy}
+        marketingError={marketingError}
+        fallbackLog={fallbackLog}
+        isFallbackDetailsOpen={isFallbackDetailsOpen}
+        onShowFallbackDetails={() => setFallbackDetailsOpen(true)}
+        onCloseFallbackDetails={() => setFallbackDetailsOpen(false)}
+        onRetryWithGemini={handleRetryGemini}
         onGenerateSeo={async () => {
           if (!activeProduct) return alert("Selecione uma oferta antes.");
           if (sections.length === 0) return alert("Gere uma página antes.");
@@ -1080,7 +1190,7 @@ const App: React.FC = () => {
            } finally { setIsLoading(false); }
          }} onReviewChapter={handleReviewChapter} onGenerateCover={handleGenerateEbookCover} onUpdateSettings={handleUpdateEbookSettings} onIllustrateChapter={() => {}} />}
         {activeModule === 'vsl' && <VslPanel script={vslScript} uiTheme={uiTheme} isLoadingAudio={false} setIsLoadingAudio={() => {}} />}
-        {activeModule === 'marketing' && <MarketingStrategyPanel plan={marketingPlan} />}
+        {activeModule === 'marketing' && <MarketingStrategyPanel plan={marketingPlan} onSavePlan={() => handleSaveProject()} />}
         
         {['strategy', 'product', 'builder', 'analytics', 'library'].includes(activeModule) && (
           <PreviewPanel 
@@ -1100,3 +1210,20 @@ const App: React.FC = () => {
 };
 
 export default App;
+  const triggerAiFallback = (message: string) => {
+    setFallbackLog({
+      timestamp: Date.now(),
+      error: message,
+      previous: 'Gemini',
+      current: 'OpenRouter',
+      message,
+    });
+    setFallbackDetailsOpen(true);
+  };
+
+  const handleRetryGemini = () => {
+    setFallbackLog(null);
+    setFallbackDetailsOpen(false);
+    setSaveMessage("⚡ Tentando Gemini novamente...");
+    setTimeout(() => setSaveMessage(null), 2000);
+  };
