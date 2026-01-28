@@ -1,35 +1,6 @@
 
 import { GoogleGenAI, Part, Type, Modality } from "@google/genai";
-import { GenerationOptions, PageType, Section, Producer, ProductInfo, ImageAspectRatio, VisualStyle, Ebook, EbookChapter, VslScript, SeoSettings, AssetPreset, ImageExportFormat, EbookConfig, PaidCampaignInput, PaidCampaignPlan, AiPlanResult, ImageFallbackReason } from "../types";
-
-const GEMINI_API_KEY = (import.meta.env.VITE_GEMINI_API_KEY ?? import.meta.env.VITE_API_KEY) as string | undefined;
-if (!GEMINI_API_KEY) {
-  throw new Error("GEMINI_API_KEY não configurada. Defina VITE_GEMINI_API_KEY ou VITE_API_KEY no .env.");
-}
-
-const OPENROUTER_KEY = import.meta.env.VITE_OPENROUTER_KEY as string | undefined;
-const OPENROUTER_URL = import.meta.env.VITE_OPENROUTER_URL || 'https://openrouter.ai/api/v1/chat/completions';
-const OPENROUTER_MODEL = import.meta.env.VITE_OPENROUTER_MODEL || 'gpt-4o-mini';
-
-const createGenAiClient = () => new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-
-const extractErrorMessage = (err: any) =>
-  String(err?.message || err?.error?.message || '').toLowerCase();
-
-const shouldFallbackToOpenRouter = (err: any) => {
-  if (!OPENROUTER_KEY) return false;
-  const message = extractErrorMessage(err);
-  return message.includes('quota') || message.includes('resource_exhausted') || message.includes('429');
-};
-
-const isQuotaError = (err: any) => {
-  const message = extractErrorMessage(err);
-  return /quota|resource_exhausted|429|rate limit|limit exceeded/i.test(message);
-};
-
-const isOtherImageError = (err: any) => /OTHER/i.test(extractErrorMessage(err));
-
-const shouldFallbackImageModel = (err: any) => isQuotaError(err) || isOtherImageError(err);
+import { GenerationOptions, PageType, Section, Producer, ProductInfo, ImageAspectRatio, VisualStyle, Ebook, EbookChapter, VslScript, SeoSettings, AssetPreset, ImageExportFormat, EbookConfig, PaidCampaignInput, PaidCampaignPlan } from "../types";
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -151,33 +122,6 @@ const sanitizeAuthorHtml = (html: string) => {
   } catch {
     return cleaned;
   }
-};
-
-const fetchOpenRouterResponse = async (prompt: string) => {
-  if (!OPENROUTER_KEY) throw new Error('OPENROUTER_KEY não configurada para fallback.');
-  const response = await fetch(OPENROUTER_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${OPENROUTER_KEY}`,
-    },
-    body: JSON.stringify({
-      model: OPENROUTER_MODEL,
-      temperature: 0.55,
-      messages: [
-        { role: 'system', content: 'Você é um estrategista de marketing pago que responde apenas em JSON.' },
-        { role: 'user', content: prompt }
-      ],
-      max_tokens: 1200,
-      stream: false,
-    }),
-  });
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenRouter fallback falhou (${response.status}): ${errorText}`);
-  }
-  const json = await response.json();
-  return json?.choices?.[0]?.message?.content || json?.choices?.[0]?.text || '';
 };
 
 const buildAuthorContentBlocks = (html: string, expert: Producer) => {
@@ -745,7 +689,7 @@ const postProcessGeneratedHTML = (sections: Section[], producer: Producer, produ
  * Utiliza o modelo Pro com thinkingBudget para criar copy persuasiva e estrutura HTML Tailwind.
  */
 export const generateLandingPage = async (options: GenerationOptions, producer: Producer, product: ProductInfo): Promise<Section[]> => {
-  const ai = createGenAiClient();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const premiumProfile = () => {
     if (options.tone === 'Friendly') {
       return {
@@ -1092,7 +1036,7 @@ export const regenerateSectionWithCRO = async (
   product: ProductInfo,
   currentHtml: string = ''
 ): Promise<string> => {
-  const ai = createGenAiClient();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const systemInstruction = `Você é um especialista em CRO e copywriting.
 Reescreva apenas o HTML interno de UMA seção, sem <section>, sem <html>, sem <body>.
 Use Tailwind CSS e mantenha legibilidade, contraste e hierarquia.`;
@@ -1308,19 +1252,11 @@ export const generateStudioImage = async (
   strictRef: boolean = false,
   adCopy?: string,
   adType?: string
-): Promise<{
-  url: string;
-  model: string;
-  usedReference: boolean;
-  fallbackUsed: boolean;
-  fallbackReason?: ImageFallbackReason;
-}> => {
+): Promise<{ url: string; model: string; usedReference: boolean; fallbackUsed: boolean }> => {
   const isHighRes = quality === 'ultra';
   const primaryModel = isHighRes ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image';
-  const modelForRun = base64
-    ? (isHighRes ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image')
-    : primaryModel;
-  const ai = createGenAiClient();
+  const modelForRun = base64 ? 'gemini-3-pro-image-preview' : primaryModel;
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   const mapRatio = (r: string): string => {
     const supported = ["1:1", "3:4", "4:3", "9:16", "16:9"];
@@ -1348,30 +1284,19 @@ export const generateStudioImage = async (
     return [{ role: 'user', parts }];
   };
 
-  const buildImageConfig = (modelName: string, useBase64: boolean, override?: Record<string, any>) => {
-    const config: Record<string, any> = {};
-    if (!useBase64) {
-      config.aspectRatio = mapRatio(ratio);
-    }
-    if (modelName === 'gemini-3-pro-image-preview' && isHighRes) {
-      config.imageSize = "2K";
-    }
-    if (override) {
-      Object.assign(config, override);
-    }
-    return config;
-  };
+  // Use aspectRatio only for prompt-only generation; for image reference, keep native ratio
+  const imageConfig: any = base64 ? {} : { aspectRatio: mapRatio(ratio) };
+  if (isHighRes && modelForRun === 'gemini-3-pro-image-preview') {
+    imageConfig.imageSize = "2K";
+  }
 
-  const run = async (modelName: string, useBase64: boolean, overrideConfig?: Record<string, any>) => {
+  const run = async (model: string, useBase64: boolean) => {
     const response = await withRetry(
       () =>
         ai.models.generateContent({
-          model: modelName,
+          model,
           contents: buildContents(useBase64),
-          config: {
-            ...buildImageConfig(modelName, useBase64, overrideConfig),
-            responseModalities: [Modality.IMAGE]
-          }
+          config: { imageConfig, responseModalities: [Modality.IMAGE] }
         }),
       2,
       800
@@ -1381,10 +1306,12 @@ export const generateStudioImage = async (
     if (part?.inlineData) return `data:${format};base64,${part.inlineData.data}`;
     const finishReason = response.candidates?.[0]?.finishReason;
     if (finishReason) {
-      throw new Error(`Falha ao gerar imagem (${modelName}): ${finishReason}.`);
+      throw new Error(`Falha ao gerar imagem (${model}): ${finishReason}.`);
     }
-    throw new Error(`Falha ao gerar imagem (${modelName}).`);
+    throw new Error(`Falha ao gerar imagem (${model}).`);
   };
+
+  const isOtherError = (err: any) => /OTHER/i.test(String(err?.message || ''));
 
   try {
     const url = await run(modelForRun, !!base64);
@@ -1396,40 +1323,23 @@ export const generateStudioImage = async (
     if (strictRef && base64) {
       throw err;
     }
-    if (base64 && shouldFallbackImageModel(err)) {
+    if (!isOtherError(err)) throw err;
+
+    if (base64) {
       try {
         const url = await run(modelForRun, false);
-        return {
-          url,
-          model: modelForRun,
-          usedReference: false,
-          fallbackUsed: true,
-          fallbackReason: 'reference'
-        };
+        return { url, model: modelForRun, usedReference: false, fallbackUsed: true };
       } catch (fallbackErr) {
         err = fallbackErr;
       }
     }
 
-    if (!shouldFallbackImageModel(err)) throw err;
-
     const fallbackModel =
       modelForRun === 'gemini-3-pro-image-preview'
         ? 'gemini-2.5-flash-image'
         : 'gemini-3-pro-image-preview';
-    const fallbackReason: ImageFallbackReason = isQuotaError(err) ? 'quota' : 'model';
-    const overrideConfig =
-      fallbackReason === 'quota' && fallbackModel === 'gemini-3-pro-image-preview'
-        ? { imageSize: '1K' }
-        : undefined;
-    const url = await run(fallbackModel, false, overrideConfig);
-    return {
-      url,
-      model: fallbackModel,
-      usedReference: false,
-      fallbackUsed: true,
-      fallbackReason
-    };
+    const url = await run(fallbackModel, false);
+    return { url, model: fallbackModel, usedReference: false, fallbackUsed: true };
   }
 };
 
@@ -1438,7 +1348,7 @@ export const generateStudioImage = async (
  * Usa Google Search para extrair inteligência de mercado de URLs de concorrentes.
  */
 export const analyzeExternalProduct = async (url: string): Promise<any> => {
-  const ai = createGenAiClient();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: `Analise as informações do produto nesta URL: ${url}. Extraia dados completos de oferta e persona.`,
@@ -1497,7 +1407,7 @@ export const analyzeExternalProduct = async (url: string): Promise<any> => {
  * GERAÇÃO DE PAUTA DE E-BOOK
  */
 export const generateBookOutline = async (title: string, topic: string, author: string, product: ProductInfo, config?: EbookConfig): Promise<any> => {
-  const ai = createGenAiClient();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const persona = product?.persona;
   const mechanismText = product.uniqueMechanism ? `Mecanismo unico: ${product.uniqueMechanism}.` : '';
   const proofText = product.proofStats ? `Provas concretas: ${product.proofStats}.` : '';
@@ -1590,7 +1500,7 @@ Não use itálico/ênfase com asteriscos ou underline. Não use blockquotes. Par
  * Usa thinkingBudget para garantir que o conteúdo seja informativo e longo.
  */
 export const generateChapterContent = async (bookTitle: string, chapter: any, expert: Producer, product: ProductInfo, config?: EbookConfig): Promise<string> => {
-  const ai = createGenAiClient();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const persona = product?.persona;
   const mechanismText = product.uniqueMechanism ? `Mecanismo unico: ${product.uniqueMechanism}.` : '';
   const proofText = product.proofStats ? `Provas concretas: ${product.proofStats}.` : '';
@@ -1658,7 +1568,7 @@ export const reviewChapterContent = async (
   exerciseRequired: boolean = true
 ): Promise<string> => {
   if (!content || content.trim().length < 80) return content;
-  const ai = createGenAiClient();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const persona = product?.persona;
   const typeText = config?.type === 'lead_magnet'
     ? 'Tipo: Isca digital. Conteúdo leve e direto.'
@@ -1705,7 +1615,7 @@ Retorne apenas o texto final, sem markdown extra ou comentários.`,
  * GERAÇÃO DE ROTEIRO VSL
  */
 export const generateVslScript = async (model: string, duration: string, expert: Producer, product: ProductInfo): Promise<any> => {
-  const ai = createGenAiClient();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const proofText = product.proofStats ? `Provas concretas: ${product.proofStats}.` : '';
   const mechanismText = product.uniqueMechanism ? `Mecanismo único: ${product.uniqueMechanism}.` : '';
   const anchorText = product.anchorPrice || product.anchorSavings
@@ -1724,7 +1634,7 @@ export const generateVslScript = async (model: string, duration: string, expert:
  * Retorna dados PCM brutos (Raw PCM) que precisam de decodificação manual.
  */
 export const generateSpeech = async (text: string, voiceName: string = 'Kore'): Promise<string> => {
-  const ai = createGenAiClient();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash-preview-tts",
     contents: [{ parts: [{ text }] }],
@@ -1737,7 +1647,7 @@ export const generateSpeech = async (text: string, voiceName: string = 'Kore'): 
 };
 
 export const refineLandingPageContent = async (sections: Section[], instruction: string): Promise<Section[]> => {
-  const ai = createGenAiClient();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
     contents: `Refine: "${instruction}" nas seções.`,
@@ -1747,7 +1657,7 @@ export const refineLandingPageContent = async (sections: Section[], instruction:
 };
 
 export const injectAssetIntoPage = async (type: 'ebook' | 'vsl', asset: any, expert: Producer, product: ProductInfo): Promise<Section> => {
-  const ai = createGenAiClient();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const ebookConfig = asset?.config as EbookConfig | undefined;
   const typeHint = ebookConfig?.type === 'lead_magnet'
     ? 'E-book do tipo isca digital, com CTA suave.'
@@ -1767,7 +1677,7 @@ Use layout responsivo em duas colunas quando possível.`,
 };
 
 export const generateCreativeCampaign = async (sections: Section[], expert: Producer, product: ProductInfo): Promise<any[]> => {
-  const ai = createGenAiClient();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const proofText = product.proofStats ? `Provas concretas: ${product.proofStats}.` : '';
   const mechanismText = product.uniqueMechanism ? `Mecanismo único: ${product.uniqueMechanism}.` : '';
   const anchorText = product.anchorPrice || product.anchorSavings
@@ -1809,11 +1719,7 @@ export const generateCreativeCampaign = async (sections: Section[], expert: Prod
         2,
         700
       );
-      try {
-        return JSON.parse(cleanJsonResponse(response.text));
-      } catch (parseErr: any) {
-        throw new Error(`Falha ao interpretar resposta do modelo (${model}). Tente novamente.`);
-      }
+      return JSON.parse(cleanJsonResponse(response.text));
     } catch (err) {
       lastError = err;
       if (!isRetryableError(err)) break;
@@ -1823,7 +1729,7 @@ export const generateCreativeCampaign = async (sections: Section[], expert: Prod
 };
 
 export const generateMarketingIdeas = async (expert: Producer, product: ProductInfo): Promise<any[]> => {
-  const ai = createGenAiClient();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const persona = product?.persona;
   const contents = `Você é um estrategista de marketing. Gere 5 ideias de marketing altamente relevantes para este produto.
 Produto: ${product.name}. Promessa: ${product.description}. Preço: ${product.price}.
@@ -1866,7 +1772,7 @@ export const generatePaidAdsPlan = async (
   platform: string,
   budget: string
 ): Promise<any> => {
-  const ai = createGenAiClient();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const persona = product?.persona;
   const contents = `Crie um plano de campanha paga para ${platform}.
 Objetivo: ${objective}. Orçamento: ${budget}.
@@ -1900,14 +1806,12 @@ Inclua: estrutura de campanha, segmentações, criativos recomendados e métrica
   return JSON.parse(cleanJsonResponse(response.text || "{}"));
 };
 
-const parsePaidCampaign = (text: string): PaidCampaignPlan => JSON.parse(cleanJsonResponse(text || "{}"));
-
 export const generatePaidCampaignStrategy = async (
   expert: Producer,
   product: ProductInfo,
   input: PaidCampaignInput
-): Promise<AiPlanResult> => {
-  const ai = createGenAiClient();
+): Promise<PaidCampaignPlan> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const persona = product?.persona;
   const assets = input.assets || { hasPv: false, hasEbook: false, hasProof: false };
 
@@ -1929,8 +1833,6 @@ Objeções: ${persona?.objections || 'Não informado'}
 Ticket: ${input.ticket}
 Tom: ${input.tone}
 Orçamento: ${input.budget || 'Não informado'}
-Canal secundário: ${input.secondaryChannel || 'Não informado'}
-Métrica principal: ${input.primaryMetric || 'Não informado'}
 Ativos disponíveis: PV=${assets.hasPv ? 'sim' : 'não'}, Ebook=${assets.hasEbook ? 'sim' : 'não'}, Provas=${assets.hasProof ? 'sim' : 'não'}
 
 Regras:
@@ -1939,86 +1841,67 @@ Regras:
 - Forneça 3-5 ângulos, 3-5 criativos, e 5-7 itens de checklist.
 `;
 
-  const generateWithGemini = async (): Promise<AiPlanResult> => {
-    const response = await withRetry(
-      () =>
-        ai.models.generateContent({
-          model: 'gemini-3-pro-preview',
-          contents,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                summary: { type: Type.STRING },
-                funnel: {
-                  type: Type.OBJECT,
-                  properties: {
-                    top: { type: Type.STRING },
-                    middle: { type: Type.STRING },
-                    bottom: { type: Type.STRING }
-                  },
-                  required: ["top", "middle", "bottom"]
+  const response = await withRetry(
+    () =>
+      ai.models.generateContent({
+        model: 'gemini-3-pro-preview',
+        contents,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              summary: { type: Type.STRING },
+              funnel: {
+                type: Type.OBJECT,
+                properties: {
+                  top: { type: Type.STRING },
+                  middle: { type: Type.STRING },
+                  bottom: { type: Type.STRING }
                 },
-                angles: {
-                  type: Type.ARRAY,
-                  items: { type: Type.STRING }
-                },
-                creatives: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      format: { type: Type.STRING },
-                      goal: { type: Type.STRING },
-                      notes: { type: Type.STRING }
-                    },
-                    required: ["format", "goal", "notes"]
-                  }
-                },
-                copy: {
-                  type: Type.OBJECT,
-                  properties: {
-                    headline: { type: Type.STRING },
-                    body: { type: Type.STRING },
-                    cta: { type: Type.STRING }
-                  },
-                  required: ["headline", "body", "cta"]
-                },
-                checklist: { type: Type.ARRAY, items: { type: Type.STRING } },
-                nextSteps: { type: Type.ARRAY, items: { type: Type.STRING } }
+                required: ["top", "middle", "bottom"]
               },
-              required: ["summary", "funnel", "angles", "creatives", "copy", "checklist", "nextSteps"]
-            }
+              angles: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              creatives: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    format: { type: Type.STRING },
+                    goal: { type: Type.STRING },
+                    notes: { type: Type.STRING }
+                  },
+                  required: ["format", "goal", "notes"]
+                }
+              },
+              copy: {
+                type: Type.OBJECT,
+                properties: {
+                  headline: { type: Type.STRING },
+                  body: { type: Type.STRING },
+                  cta: { type: Type.STRING }
+                },
+                required: ["headline", "body", "cta"]
+              },
+              checklist: { type: Type.ARRAY, items: { type: Type.STRING } },
+              nextSteps: { type: Type.ARRAY, items: { type: Type.STRING } }
+            },
+            required: ["summary", "funnel", "angles", "creatives", "copy", "checklist", "nextSteps"]
           }
-        }),
-      2,
-      900
-    );
-    return { plan: parsePaidCampaign(response.text || "{}"), provider: 'Gemini' };
-  };
+        }
+      }),
+    2,
+    900
+  );
 
-  const generateWithOpenRouter = async (): Promise<AiPlanResult> => {
-    const text = await fetchOpenRouterResponse(contents);
-    return {
-      plan: parsePaidCampaign(text),
-      provider: 'OpenRouter',
-      notice: 'Fallback ativado após quota do Gemini.'
-    };
-  };
-
-  try {
-    return await generateWithGemini();
-  } catch (err) {
-    if (shouldFallbackToOpenRouter(err)) {
-      return await generateWithOpenRouter();
-    }
-    throw err;
-  }
+  return JSON.parse(cleanJsonResponse(response.text || "{}"));
 };
 
 export const generateABVariation = async (sections: Section[], hypothesis: string, expert: Producer, product: ProductInfo): Promise<Section[]> => {
-  const ai = createGenAiClient();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: `Gere variação baseada na hipótese: "${hypothesis}".`,
@@ -2028,7 +1911,7 @@ export const generateABVariation = async (sections: Section[], hypothesis: strin
 };
 
 export const simulateHeatmap = async (sections: Section[]): Promise<Array<{ text: string, score: number, type: string }>> => {
-  const ai = createGenAiClient();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   // Simplifica o HTML para reduzir tokens, enviando apenas texto e estrutura básica
   const simplifiedContent = sections.map(s => `[Section: ${s.type}] ${s.content.replace(/<[^>]+>/g, ' ').substring(0, 500)}...`).join('\n');
@@ -2061,7 +1944,7 @@ export const simulateHeatmap = async (sections: Section[]): Promise<Array<{ text
 };
 
 export const rewriteElementText = async (text: string, instruction: string): Promise<string> => {
-  const ai = createGenAiClient();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await withRetry(
     () =>
       ai.models.generateContent({
@@ -2078,7 +1961,7 @@ export const rewriteElementText = async (text: string, instruction: string): Pro
 };
 
 export const generateSeoFromSections = async (sections: Section[], product: ProductInfo): Promise<SeoSettings> => {
-  const ai = createGenAiClient();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const text = sections
     .map(s => s.content.replace(/<[^>]+>/g, ' '))
     .join(' ')

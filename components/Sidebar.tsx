@@ -2,7 +2,7 @@
 import React, { useRef, useMemo } from 'react';
 import { 
   GenerationOptions, Section, MarketingSettings, SeoSettings, 
-  Producer, ProductInfo, VisualStyle, ImageAspectRatio, Ebook, VslScript, ImageExportFormat, EbookConfig, Project, PaidCampaignInput, AiFallbackLog
+  Producer, ProductInfo, VisualStyle, ImageAspectRatio, Ebook, VslScript, ImageExportFormat, EbookConfig, Project, PaidCampaignInput
 } from '../types';
 
 // Modules
@@ -65,12 +65,6 @@ interface SidebarProps {
   onGeneratePaidAdsPlan: (objective: string, platform: string, budget: string) => Promise<any>;
   onSaveCanvasImage: (dataUrl: string, meta: { prompt: string; preset: any }) => Promise<void>;
   onGeneratePaidStrategy: (input: PaidCampaignInput) => void;
-  marketingError: string | null;
-  fallbackLog: AiFallbackLog | null;
-  isFallbackDetailsOpen: boolean;
-  onShowFallbackDetails: () => void;
-  onCloseFallbackDetails: () => void;
-  onRetryWithGemini: () => void;
   
   ebooks: Ebook[];
   vslScript?: VslScript | null;
@@ -106,12 +100,6 @@ const Sidebar: React.FC<SidebarProps> = (props) => {
             onGenerate={props.onGeneratePaidStrategy}
             isLoading={props.isLoading}
             activeProduct={props.activeProduct}
-            errorMessage={props.marketingError}
-            fallbackLog={props.fallbackLog}
-            isFallbackDetailsOpen={props.isFallbackDetailsOpen}
-            onShowFallbackDetails={props.onShowFallbackDetails}
-            onCloseFallbackDetails={props.onCloseFallbackDetails}
-            onRetryWithGemini={props.onRetryWithGemini}
           />
         );
       case 'product':
