@@ -46,6 +46,10 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
   const popoverRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
 
+  const removeInvalidSvgPaths = (html: string) => {
+    return html.replace(/<path\b[^>]*\sd=(["'])(?![Mm])[^"']*\1[^>]*>(?:<\/path>)?/gi, '');
+  };
+
   const currentSections = useMemo(() => {
     return (variationSections && variationSections.length > 0) ? variationSections : sections;
   }, [sections, variationSections]);
@@ -99,8 +103,8 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
   }, [activeElement?.tagName]);
 
   const initialHtml = currentSections.map(s => `
-    <div id="${s.id}" class="section-container ${selectedSectionId === s.id ? 'active' : ''}">
-      ${s.content}
+    <div id="${s.id}" class="section-container ${selectedSectionId === s.id ? 'active' : ''}" data-section-type="${s.type?.toLowerCase() || ''}">
+      ${removeInvalidSvgPaths(s.content || '')}
     </div>
   `).join('');
 
@@ -126,6 +130,21 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
           body { font-family: sans-serif; margin: 0; background: white; overflow-x: hidden; min-height: 100vh; }
           .section-container { position: relative; width: 100%; transition: outline 0.1s; cursor: pointer; }
           .section-container.active { outline: 3px solid #3b82f6; outline-offset: -3px; z-index: 10; }
+          .section-container[data-section-type="author"],
+          .section-container[data-section-type="testimonial"],
+          .section-container[data-section-type="quote"] {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            min-height: 320px;
+            padding: 2rem;
+          }
+          .section-container[data-section-type="author"] > *,
+          .section-container[data-section-type="testimonial"] > *,
+          .section-container[data-section-type="quote"] > * {
+            width: 100%;
+          }
           .section-badge { display: none; }
           [contenteditable="true"] { cursor: text; outline: none; transition: background 0.1s; }
           [contenteditable="true"]:hover { background: rgba(59, 130, 246, 0.03); }

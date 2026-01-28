@@ -194,6 +194,8 @@ export interface VslScript {
   thumbnailUrl?: string;
 }
 
+export type ImageFallbackReason = 'quota' | 'model' | 'reference' | 'other';
+
 export interface StudioImage {
   id: string;
   url: string;
@@ -207,6 +209,7 @@ export interface StudioImage {
   modelUsed?: string;
   usedReference?: boolean;
   fallbackUsed?: boolean;
+  fallbackReason?: ImageFallbackReason;
   adCopy?: string;
   adType?: string;
 }
@@ -254,12 +257,14 @@ export interface PaidCampaignInput {
   mechanism?: string;
   promise?: string;
   channel: string;
+  secondaryChannel?: string;
   assets: {
     hasPv: boolean;
     hasEbook: boolean;
     hasProof: boolean;
   };
   tone: string;
+  primaryMetric?: string;
   budget?: string;
 }
 
@@ -302,6 +307,20 @@ export interface PromptLibraryItem {
   category: 'Headline' | 'Copywriting' | 'Estrutura' | 'Anúncios' | 'E-books' | 'VSL';
   title: string;
   content: string;
+}
+
+export interface AiFallbackLog {
+  timestamp: number;
+  error: string;
+  previous: 'Gemini' | 'OpenRouter' | 'Unknown';
+  current: 'Gemini' | 'OpenRouter' | 'Unknown';
+  message?: string;
+}
+
+export interface AiPlanResult {
+  plan: PaidCampaignPlan;
+  provider: 'Gemini' | 'OpenRouter';
+  notice?: string;
 }
 
 export interface Template {

@@ -15,6 +15,7 @@ View your app in AI Studio: https://ai.studio/apps/drive/1PS-_vRmOOzyBjMZn4g0tkF
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Set the `VITE_GEMINI_API_KEY` (ou `VITE_API_KEY`) em [.env.local](.env.local).
+3. (Opcional) Configure `VITE_OPENROUTER_KEY`, `VITE_OPENROUTER_URL`, `VITE_OPENROUTER_MODEL` e `AI_PROVIDER_MODE=auto` para ativar fallback automático no OpenRouter.
 3. Run the app:
    `npm run dev`

@@ -14,6 +14,14 @@ interface BookPanelProps {
   onIllustrateChapter: (bookId: string, chapterId: string, prompt: string) => void;
 }
 
+const sanitizeEditorialHtml = (html: string) => {
+  if (!html) return html;
+  let cleaned = html.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '');
+  cleaned = cleaned.replace(/on[a-z]+=["'][^"']*["']/gi, '');
+  cleaned = cleaned.replace(/javascript:/gi, '');
+  return cleaned;
+};
+
 const renderEditorialMarkdown = (text: string, titleToSkip?: string) => {
   if (!text) return '';
 
@@ -111,7 +119,7 @@ const renderEditorialMarkdown = (text: string, titleToSkip?: string) => {
     return line;
   });
 
-  return wrappedLines.join('\n');
+  return sanitizeEditorialHtml(wrappedLines.join('\n'));
 };
 
 const BookPanel: React.FC<BookPanelProps> = ({ ebook, onGenerateChapter, onReviewChapter, onGenerateCover, onUpdateSettings }) => {
