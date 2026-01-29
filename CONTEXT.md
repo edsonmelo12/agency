@@ -72,6 +72,11 @@ O `GeminiService` usa `import.meta.env`, portanto o servidor (vite) precisa capt
 
 ---
 
+## 🔐 Segurança e gestão de segredos
+- Nunca versionar arquivos contendo `VITE_GEMINI_API_KEY`, `VITE_OPENROUTER_KEY` ou outras credenciais sensíveis. Use `.env.example` como modelo e mantenha as cópias reais em `.env.local`, que já está ignorado.
+- Ao receber alertas do GitHub Secret Scanning, revogue as chaves afetadas (Google Cloud e OpenRouter), gere novas credenciais e atualize o `.env.local` de maneira segura.
+- Prefira injetar essas variáveis pelo cofre/secret manager do ambiente (CI/CD, hosting) em vez de copiá-las em arquivos versionados.
+
 ## 📘 Regra de Negócio — E-book (Isca x Principal)
 - **Tipo**: `lead_magnet` (Isca) ou `principal` (Produto principal).
 - **Introdução**: no máximo 1 página.
