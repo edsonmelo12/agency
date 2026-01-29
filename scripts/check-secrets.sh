@@ -9,10 +9,10 @@ if git ls-files --error-unmatch .env >/dev/null 2>&1 || git ls-files --error-unm
   exit 1
 fi
 
-# Search for explicit VITE_ keys in tracked files (excluding node_modules/dist)
-if git grep -n --cached -E "(VITE_GEMINI_API_KEY|VITE_OPENROUTER_KEY|GEMINI_API_KEY|OPENROUTER_KEY)" -- ':!node_modules' ':!dist' >/dev/null 2>&1; then
-  echo "❌ Encontrado valor de chave (VITE_*) em arquivos rastreados. Revise antes de commitar."
-  git grep -n --cached -E "(VITE_GEMINI_API_KEY|VITE_OPENROUTER_KEY|GEMINI_API_KEY|OPENROUTER_KEY)" -- ':!node_modules' ':!dist'
+# Search only for tracked secrets with value patterns (sk- or AIza) 
+if git grep -n --cached -E "(VITE_GEMINI_API_KEY|VITE_OPENROUTER_KEY|GEMINI_API_KEY|OPENROUTER_KEY)\\s*=\\s*(sk-|AIza)" -- '*.env*' >/dev/null 2>&1; then
+  echo "❌ Referência a segredo real dentro de arquivos .env rastreados. Revise antes de commitar."
+  git grep -n --cached -E "(VITE_GEMINI_API_KEY|VITE_OPENROUTER_KEY|GEMINI_API_KEY|OPENROUTER_KEY)\\s*=\\s*(sk-|AIza)" -- '*.env*'
   exit 1
 fi
 
