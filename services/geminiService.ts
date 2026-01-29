@@ -2,19 +2,66 @@
 import { GoogleGenAI, Part, Type, Modality } from "@google/genai";
 import { GenerationOptions, PageType, Section, Producer, ProductInfo, ImageAspectRatio, VisualStyle, Ebook, EbookChapter, VslScript, SeoSettings, AssetPreset, ImageExportFormat, EbookConfig, PaidCampaignInput, PaidCampaignPlan, AiPlanResult, ImageFallbackReason } from "../types";
 
-const GEMINI_API_KEY = (import.meta.env.VITE_GEMINI_API_KEY ?? import.meta.env.VITE_API_KEY) as string | undefined;
-if (!GEMINI_API_KEY) {
-  throw new Error("GEMINI_API_KEY não configurada. Defina VITE_GEMINI_API_KEY ou VITE_API_KEY no .env.");
+export interface ApiKeyLeakDetail {
+  message: string;
+  error?: string;
 }
 
-const OPENROUTER_KEY = import.meta.env.VITE_OPENROUTER_KEY as string | undefined;
-const OPENROUTER_URL = import.meta.env.VITE_OPENROUTER_URL || 'https://openrouter.ai/api/v1/chat/completions';
-const OPENROUTER_MODEL = import.meta.env.VITE_OPENROUTER_MODEL || 'gpt-4o-mini';
+const readEnvVar = (key: string) => {
+  if (typeof process !== "undefined" && process.env[key]) {
+    return process.env[key];
+  }
+  if (typeof import.meta !== "undefined" && import.meta.env && import.meta.env[key]) {
+    return import.meta.env[key];
+  }
+  return undefined;
+};
 
-const createGenAiClient = () => new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+const GEMINI_API_KEY = (readEnvVar("VITE_GEMINI_API_KEY") ?? readEnvVar("VITE_API_KEY") ?? readEnvVar("GEMINI_API_KEY")) as string | undefined;
+if (!GEMINI_API_KEY) {
+  throw new Error("GEMINI_API_KEY não configurada. Defina VITE_GEMINI_API_KEY, VITE_API_KEY ou GEMINI_API_KEY.");
+}
 
-const extractErrorMessage = (err: any) =>
+const OPENROUTER_KEY = readEnvVar("VITE_OPENROUTER_KEY") ?? readEnvVar("OPENROUTER_KEY");
+const OPENROUTER_URL = (readEnvVar("VITE_OPENROUTER_URL") || "https://openrouter.ai/api/v1/chat/completions") as string;
+const OPENROUTER_MODEL = (readEnvVar("VITE_OPENROUTER_MODEL") || "gpt-4o-mini") as string;
+
+export const extractErrorMessage = (err: any) =>
   String(err?.message || err?.error?.message || '').toLowerCase();
+
+export const isLeakedKeyError = (err: any) => {
+  if (!err) return false;
+  const code = err?.error?.code ?? err?.code;
+  if (code !== 403 && code !== 'PERMISSION_DENIED') return false;
+  const message = extractErrorMessage(err);
+  return message.includes('leaked') || message.includes('exposed') || message.includes('reported');
+};
+
+const leakAlertMessage = 'Chave Gemini relatada como exposta. Revogue no Google Cloud, gere nova API key, atualize .env.local e reinicie o Vite (npm run dev).';
+
+const emitLeakedKeyEvent = (err: any) => {
+  if (typeof window === 'undefined') return;
+  if (!isLeakedKeyError(err)) return;
+  const detail: ApiKeyLeakDetail = {
+    message: leakAlertMessage,
+    error: extractErrorMessage(err),
+  };
+  window.dispatchEvent(new CustomEvent<ApiKeyLeakDetail>('ai:key-leaked', { detail }));
+};
+
+const createGenAiClient = () => {
+  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+  const originalGenerateContent = ai.models.generateContent.bind(ai.models);
+  ai.models.generateContent = async (...args) => {
+    try {
+      return await originalGenerateContent(...args);
+    } catch (err) {
+      emitLeakedKeyEvent(err);
+      throw err;
+    }
+  };
+  return ai;
+};
 
 const shouldFallbackToOpenRouter = (err: any) => {
   if (!OPENROUTER_KEY) return false;
@@ -46,7 +93,10 @@ const withRetry = async <T>(fn: () => Promise<T>, retries = 2, baseDelay = 700):
     try {
       return await fn();
     } catch (err) {
-      if (!isRetryableError(err) || attempt >= retries) throw err;
+      if (!isRetryableError(err) || attempt >= retries) {
+        emitLeakedKeyEvent(err);
+        throw err;
+      }
       await sleep(baseDelay * Math.pow(2, attempt));
       attempt += 1;
     }

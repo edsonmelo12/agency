@@ -10,7 +10,7 @@ import {
   PageType, MarketingSettings, SeoSettings, Producer, ProductInfo, StudioImage, VisualStyle, ImageAspectRatio, ImageExportFormat,
   Ebook, VslScript, AssetPreset
 } from './types';
-import { generateLandingPage, generateStudioImage, generateBookOutline, generateChapterContent, generateVslScript, refineLandingPageContent, injectAssetIntoPage, generateCreativeCampaign, generateABVariation } from './services/geminiService';
+import { generateLandingPage, generateStudioImage, generateBookOutline, generateChapterContent, generateVslScript, refineLandingPageContent, injectAssetIntoPage, generateCreativeCampaign, generateABVariation } from './services/genaiClient';
 import { getAllExperts, getProductsByExpert, getProjectsByProduct, saveProject, getAllStudioImages, saveStudioImage, deleteStudioImage, saveEbook, getEbooksByProduct, saveProduct, saveExpert, deleteEbook, saveVslScript, getVslScriptsByProduct, openDB, clearAllData } from './services/dbService';
 
 type NavModule = 'strategy' | 'product' | 'builder' | 'analytics' | 'studio' | 'ebook' | 'vsl' | 'library';

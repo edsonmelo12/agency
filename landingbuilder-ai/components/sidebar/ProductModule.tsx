@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ProductInfo, Producer } from '../../types';
 import { Label, Input, TextArea, Card, Button, Toggle, Select } from '../ui/BaseComponents';
 import { getProductsByExpert, saveProduct, deleteProduct } from '../../services/dbService';
-import { analyzeExternalProduct } from '../../services/geminiService';
+import { analyzeExternalProduct } from '../../services/genaiClient';
 
 interface Props {
   activeExpert: Producer | null;

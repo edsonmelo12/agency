@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Section, ActiveElement, StudioImage } from '../types';
-import { simulateHeatmap, rewriteElementText } from '../services/geminiService';
+import { simulateHeatmap, rewriteElementText } from '../services/genaiClient';
 import HeatmapOverlay from './HeatmapOverlay';
 import { Input } from './ui/BaseComponents';
 

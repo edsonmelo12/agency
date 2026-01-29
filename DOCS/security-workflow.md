@@ -22,3 +22,19 @@ Manter todos os projetos da pasta `Local Sites` livres de chaves/segredos expost
 4. `git-summary.js` pode continuar lançando o menu/resumo/exportação normalmente; ele fará o commit/push só depois que a verificação de segredos passar.
 
 Mantenha esse arquivo atualizado se novos scripts de segurança forem adicionados aos projetos futuros.
+
+## Proxy seguro para chamadas IA
+1. Crie um arquivo `.env.server` (ou use o mesmo `.env.local` apenas para o backend) com as chaves reais:  
+   ```
+   GEMINI_API_KEY=sk-...
+   OPENROUTER_KEY=sk-...
+   API_PORT=4001
+   ```  
+   Esse arquivo fica **fora do git** e só é lido pelo servidor (veja `.gitignore`).  
+2. Inicie o proxy antes de trabalhar com o frontend:
+   ```bash
+   npm run server:start
+   ```
+   Ele usa `services/geminiService.ts` no backend e expõe `/api/genai` para as operações.  
+3. Configure o frontend para apontar para o proxy (o Vite já faz isso via `VITE_API_PROXY=http://localhost:4001`).  
+4. Agora o front chama `services/genaiClient.ts`, que dispara `fetch('/api/genai', { action, args })`. Nenhum valor `VITE_GEMINI_API_KEY` é usado no bundle, então o Google nunca mais detectará a chave como exposta.

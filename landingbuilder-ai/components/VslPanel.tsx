@@ -2,7 +2,7 @@
 import React, { useState, useRef } from 'react';
 import { VslScript } from '../types';
 import { Button } from './ui/BaseComponents';
-import { generateSpeech } from '../services/geminiService';
+import { generateSpeech } from '../services/genaiClient';
 
 interface Props {
   script: VslScript | null;
