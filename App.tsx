@@ -5,11 +5,11 @@ import PreviewPanel from './components/PreviewPanel';
 import StudioPanel from './components/StudioPanel';
 import BookPanel from './components/BookPanel';
 import VslPanel from './components/VslPanel';
-import MarketingStrategyPanel from './components/MarketingStrategyPanel';
+import MarketingWorkflowPanel from './components/MarketingWorkflowPanel';
 import { 
   GenerationOptions, Section, ActiveElement, Project, 
   PageType, MarketingSettings, SeoSettings, Producer, ProductInfo, StudioImage, ImageFallbackReason, VisualStyle, ImageAspectRatio, ImageExportFormat,
-  Ebook, VslScript, AssetPreset, EbookConfig, PaidCampaignInput, PaidCampaignPlan, AiFallbackLog, AiPlanResult
+  Ebook, VslScript, AssetPreset, EbookConfig, PaidCampaignInput, PaidCampaignPlan, CreativeIdea, BuilderPlan, CampaignSegment, StrategySuggestion, AiFallbackLog, AiPlanResult
 } from './types';
 import { generateLandingPage, generateStudioImage, generateBookOutline, generateChapterContent, reviewChapterContent, generateVslScript, refineLandingPageContent, injectAssetIntoPage, generateCreativeCampaign, generateSeoFromSections, generateMarketingIdeas, generatePaidAdsPlan, generatePaidCampaignStrategy, regenerateSectionWithCRO, hydrateSectionContent, ApiKeyLeakDetail } from './services/genaiClient';
 import { getAllExperts, getProductsByExpert, getProjectsByProduct, saveProject, deleteProject, getAllStudioImages, saveStudioImage, deleteStudioImage, saveEbook, getEbooksByProduct, saveProduct, saveExpert, deleteEbook, saveVslScript, getVslScriptsByProduct, openDB, clearAllData } from './services/dbService';
@@ -47,6 +47,72 @@ declare global {
   }
 }
 
+const STRATEGY_SUGGESTIONS: StrategySuggestion[] = [
+  {
+    id: 'topo-curiosity',
+    stage: 'Topo',
+    title: 'Topo – Curiosidade guiada',
+    objective: 'Consciência (Traffic)',
+    summary: 'Vídeo curto narrando solução + carrossel conceitual para despertar curiosidade.',
+    segments: [
+      { name: 'BROAD', focus: 'Brasil • 25-55 • Artesanato & DIY', budget: 'R$ 9 / dia' },
+      { name: 'LOOKALIKE', focus: 'Lookalike 1% dos visitantes da home', budget: 'R$ 7 / dia' }
+    ],
+    metrics: ['CTR ≥ 2.5%', 'View rate ≥ 40%'],
+    tags: ['emotional', 'storytelling'],
+    creative: {
+      headline: 'Descubra o método que salva horas de artesanato',
+      body: 'Vídeo de 30s com dor→solução e corte rápido de prova visual.',
+      cta: 'Conhecer o método'
+    },
+    budgetPerDay: 16,
+    utmTemplate: 'utm_campaign=topo-curiosity&utm_medium=paid',
+    checklistAdditions: ['Criar texto educacional', 'Adicionar legenda com benefício']
+  },
+  {
+    id: 'meio-authority',
+    stage: 'Meio',
+    title: 'Meio – Autoridade e comparação',
+    objective: 'Consideração (Engagement)',
+    summary: 'Comparativo com concorrentes + depoimento com dados para acelerar confiança.',
+    segments: [
+      { name: 'CUSTOM', focus: 'Engajamento de vídeo + leads quentes', budget: 'R$ 12 / dia' },
+      { name: 'LOOKALIKE', focus: 'Lookalike 2% dos compradores', budget: 'R$ 8 / dia' }
+    ],
+    metrics: ['Tempo médio ≥ 45s', 'CTR ≥ 3%'],
+    tags: ['authority', 'comparison'],
+    creative: {
+      headline: 'Veja por que Sara ensina o método que chefs não revelam',
+      body: 'Depoimento com número de alunos e bullets comparando resultados.',
+      cta: 'Ver comparação'
+    },
+    budgetPerDay: 28,
+    utmTemplate: 'utm_campaign=meio-authority&utm_medium=paid',
+    checklistAdditions: ['Incluir prova social', 'Adicionar comparação visual']
+  },
+  {
+    id: 'fundo-urgency',
+    stage: 'Fundo',
+    title: 'Fundo – Prova + urgência',
+    objective: 'Conversão (Purchase)',
+    summary: 'Remarketing com oferta direta, escassez controlada e prova social curta.',
+    segments: [
+      { name: 'REMARKETING', focus: '14 dias • visitas + leads', budget: 'R$ 15 / dia' },
+      { name: 'BROAD', focus: 'Lookalike alto valor + carrinhos', budget: 'R$ 12 / dia' }
+    ],
+    metrics: ['CPA ≤ objetivo', 'ROAS ≥ 3'],
+    tags: ['direct', 'urgency'],
+    creative: {
+      headline: 'Últimas vagas com garantia estendida',
+      body: 'Oferta direta com prova visual e preço + garantia de 7 dias.',
+      cta: 'Garantir vaga'
+    },
+    budgetPerDay: 27,
+    utmTemplate: 'utm_campaign=fundo-urgency&utm_medium=paid',
+    checklistAdditions: ['Adicionar garantia', 'Mostrar escassez']
+  }
+];
+
 const safeLocalStorage = {
   read(key: string, fallback: string | null = null) {
     if (typeof window === 'undefined') return fallback;
@@ -64,6 +130,71 @@ const safeLocalStorage = {
       // ignore
     }
   }
+};
+
+const parseBudgetValue = (budget?: string): number => {
+  if (!budget) return 30;
+  const normalized = budget.replace(/\s/g, '').replace(/[^\d,\.]/g, '').replace(',', '.');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
+};
+
+const formatCurrency = (value: number): string =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(value);
+
+const slugify = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '') || 'campanha';
+
+const buildBuilderPlan = (
+  plan: PaidCampaignPlan,
+  input: PaidCampaignInput,
+  provider: 'Gemini' | 'OpenRouter' | 'Unknown',
+  note?: string,
+  strategy?: StrategySuggestion
+): BuilderPlan => {
+  const baseBudget = Math.max(parseBudgetValue(input.budget), 20);
+  const headline = plan.copy?.headline || plan.summary || input.objective;
+  const shortHeadline = headline
+    .split(' ')
+    .slice(0, 4)
+    .join(' ')
+    .trim();
+  const campaignName = `CBO - Conversão - ${shortHeadline || input.objective}`;
+  const segments = [
+    { name: 'BROAD', focus: 'Brasil • 25-55 • Interesses amplos', budget: `${formatCurrency(baseBudget * 0.45)} / dia` },
+    { name: 'LOOKALIKE', focus: 'Lookalike 1% dos compradores + leads quentes', budget: `${formatCurrency(baseBudget * 0.3)} / dia` },
+    { name: 'REMARKETING', focus: 'Remarketing 14 dias • tráfego recente', budget: `${formatCurrency(baseBudget * 0.25)} / dia` }
+  ];
+  const simulations = [
+    { label: 'Fase 1 (teste)', budget: `${formatCurrency(baseBudget)} / dia`, cpcEstimate: 'R$3,80' },
+    { label: 'Escala +50%', budget: `${formatCurrency(baseBudget * 1.5)} / dia`, cpcEstimate: 'R$3,45' }
+  ];
+  const utmTemplate = strategy?.utmTemplate || `utm_campaign=${slugify(plan.summary || headline)}&utm_source=${(input.channel || 'meta').toLowerCase()}&utm_medium=paid`;
+  const checklist = [
+    ...plan.checklist.slice(0, 4),
+    'UTMs configuradas',
+    'Criativos aprovados',
+    'Segmentos monitorados',
+    ...(strategy?.checklistAdditions || [])
+  ];
+  const effectiveSegments = strategy?.segments || segments;
+  const effectiveBudget = strategy ? `${formatCurrency(strategy.budgetPerDay)} / dia` : `${formatCurrency(baseBudget)} / dia`;
+  const providerConfidence = Math.min(95, provider === 'Gemini' ? 90 : 84);
+  return {
+    campaignName,
+    objective: input.objective,
+    budgetPerDay: effectiveBudget,
+    segments: effectiveSegments,
+    checklist,
+    simulations,
+    utmTemplate,
+    providerName: provider,
+    providerConfidence,
+    note: strategy?.title || note
+  };
 };
 
 const defaultGenerationOptions: GenerationOptions = {
@@ -114,6 +245,13 @@ const App: React.FC = () => {
   const [activeEbookId, setActiveEbookId] = useState<string | null>(null);
   const [vslScript, setVslScript] = useState<VslScript | null>(null);
   const [marketingPlan, setMarketingPlan] = useState<PaidCampaignPlan | null>(null);
+  const [paidCampaignInput, setPaidCampaignInput] = useState<PaidCampaignInput | null>(null);
+  const [marketingPlanProvider, setMarketingPlanProvider] = useState<'Gemini' | 'OpenRouter' | 'Unknown'>('Gemini');
+  const [creativeIdeas, setCreativeIdeas] = useState<CreativeIdea[]>([]);
+  const [builderPlan, setBuilderPlan] = useState<BuilderPlan | null>(null);
+  const [builderNote, setBuilderNote] = useState<string | undefined>(undefined);
+  const [isGeneratingCreatives, setIsGeneratingCreatives] = useState(false);
+  const [selectedStrategyId, setSelectedStrategyId] = useState<string>(STRATEGY_SUGGESTIONS[0]?.id || '');
   const [marketingError, setMarketingError] = useState<string | null>(null);
   const [fallbackLog, setFallbackLog] = useState<AiFallbackLog | null>(null);
   const [isFallbackDetailsOpen, setFallbackDetailsOpen] = useState(false);
@@ -126,6 +264,36 @@ const App: React.FC = () => {
   const [activeElement, setActiveElement] = useState<ActiveElement | null>(null);
   
   const saveTimeoutRef = useRef<number | null>(null);
+  const selectedStrategy = useMemo(
+    () => STRATEGY_SUGGESTIONS.find((strategy) => strategy.id === selectedStrategyId) || null,
+    [selectedStrategyId]
+  );
+
+  useEffect(() => {
+    if (!marketingPlan || !paidCampaignInput) {
+      setBuilderPlan(null);
+      return;
+    }
+    const plan = buildBuilderPlan(
+      marketingPlan,
+      paidCampaignInput,
+      marketingPlanProvider,
+      builderNote,
+      selectedStrategy || undefined
+    );
+    setBuilderPlan(plan);
+  }, [marketingPlan, paidCampaignInput, marketingPlanProvider, builderNote, selectedStrategy]);
+
+  const buildProjectOptions = () => ({
+    ...currentOptions,
+    marketing,
+    seo,
+    marketingPlan,
+    paidCampaignInput,
+    marketingPlanProvider,
+    selectedStrategyId,
+    builderNote
+  });
 
   useEffect(() => {
     const init = async () => {
@@ -201,6 +369,12 @@ const App: React.FC = () => {
     if (!proj) {
       setActiveProject(null);
       setSections([]);
+      setMarketingPlan(null);
+      setPaidCampaignInput(null);
+      setMarketingPlanProvider('Gemini');
+      setBuilderPlan(null);
+      setBuilderNote(undefined);
+      setCreativeIdeas([]);
       return;
     }
 
@@ -212,7 +386,15 @@ const App: React.FC = () => {
       setCurrentOptions(mergedOptions);
       if (proj.options?.marketing) setMarketing(proj.options.marketing);
       if (proj.options?.seo) setSeo(proj.options.seo);
-      setMarketingPlan(proj.options?.marketingPlan || null);
+      const storedPlan = proj.options?.marketingPlan || null;
+      const storedInput = proj.options?.paidCampaignInput || null;
+      const provider = proj.options?.marketingPlanProvider || 'Gemini';
+      setMarketingPlanProvider(provider);
+      setPaidCampaignInput(storedInput);
+      setMarketingPlan(storedPlan);
+      setBuilderNote(proj.options?.builderNote);
+      setSelectedStrategyId(proj.options?.selectedStrategyId || STRATEGY_SUGGESTIONS[0]?.id || '');
+      setCreativeIdeas([]);
     }
   };
 
@@ -265,7 +447,7 @@ const App: React.FC = () => {
       versionName,
       isPrimary: activeProject?.isPrimary ?? (projectVersions.length === 0),
       sections: finalSections, 
-      options: { ...currentOptions, marketing, seo, marketingPlan }, 
+      options: buildProjectOptions(),
       createdAt: activeProject?.createdAt || Date.now(), 
       updatedAt: Date.now()
     };
@@ -302,6 +484,7 @@ const App: React.FC = () => {
     const now = Date.now();
     const versionName = name || getDefaultVersionName();
     const base = source || activeProject;
+    const projectOptions = base?.options ? { ...base.options, ...buildProjectOptions() } : buildProjectOptions();
     const project: Project = {
       id: `proj-${now}`,
       productId: activeProduct.id,
@@ -309,7 +492,7 @@ const App: React.FC = () => {
       versionName,
       isPrimary: projectVersions.length === 0,
       sections: base?.sections || sections,
-      options: base?.options || { ...currentOptions, marketing, seo, marketingPlan },
+      options: projectOptions,
       createdAt: now,
       updatedAt: now
     };
@@ -433,6 +616,12 @@ const App: React.FC = () => {
 
         if (data.activeExpertId) safeLocalStorage.write('lb_active_expert_id', data.activeExpertId);
         if (data.activeProductId) safeLocalStorage.write('lb_active_product_id', data.activeProductId);
+        if (data.marketing) setMarketing(data.marketing);
+        if (data.marketingPlan) setMarketingPlan(data.marketingPlan);
+        if (data.marketingPlanProvider) setMarketingPlanProvider(data.marketingPlanProvider);
+        if (data.paidCampaignInput) setPaidCampaignInput(data.paidCampaignInput);
+        if (data.builderPlan) setBuilderPlan(data.builderPlan);
+        if (data.selectedStrategyId) setSelectedStrategyId(data.selectedStrategyId);
 
         setSaveMessage("📦 Sucesso! Reiniciando...");
         setTimeout(() => window.location.reload(), 1500);
@@ -463,6 +652,12 @@ const App: React.FC = () => {
         const req = tx.objectStore(store).getAll();
         backup[store] = await new Promise((res) => { req.onsuccess = () => res(req.result); });
       }
+      backup.marketing = marketing;
+      backup.marketingPlan = marketingPlan;
+      backup.marketingPlanProvider = marketingPlanProvider;
+      backup.paidCampaignInput = paidCampaignInput;
+      backup.builderPlan = builderPlan;
+      backup.selectedStrategyId = selectedStrategyId;
       backup.activeExpertId = activeExpert?.id;
       backup.activeProductId = activeProduct?.id;
       downloadFile(JSON.stringify(backup, null, 2), `backup-full-${Date.now()}.json`, 'application/json');
@@ -497,7 +692,7 @@ const App: React.FC = () => {
             versionName,
             isPrimary: false,
             sections: [],
-            options: { ...currentOptions, marketing, seo, marketingPlan },
+            options: buildProjectOptions(),
             createdAt: now,
             updatedAt: now
           };
@@ -941,13 +1136,40 @@ const App: React.FC = () => {
     return generatePaidAdsPlan(activeExpert, activeProduct, objective, platform, budget);
   };
 
+  const fetchCreativeIdeas = async (strategy?: StrategySuggestion): Promise<CreativeIdea[]> => {
+    if (!activeExpert || !activeProduct) return [];
+    setIsGeneratingCreatives(true);
+    try {
+      await checkApiKey();
+      const ideas = await generateCreativeCampaign(sections, activeExpert, activeProduct, strategy);
+      setCreativeIdeas(ideas);
+      return ideas;
+    } catch (err) {
+      console.error("Erro ao gerar criativos:", err);
+      return [];
+    } finally {
+      setIsGeneratingCreatives(false);
+    }
+  };
+
   const handleSyncCreatives = async () => {
     if (!activeExpert || !activeProduct) {
       alert("Selecione expert e oferta.");
       return [];
     }
-    await checkApiKey();
-    return generateCreativeCampaign(sections, activeExpert, activeProduct);
+    return fetchCreativeIdeas(selectedStrategy ?? undefined);
+  };
+
+  const handleRefreshCreatives = () => fetchCreativeIdeas(selectedStrategy ?? undefined);
+
+  const handleSelectStrategy = async (strategyId: string) => {
+    const nextStrategy = STRATEGY_SUGGESTIONS.find((strategy) => strategy.id === strategyId) || null;
+    if (nextStrategy) {
+      setSelectedStrategyId(strategyId);
+      await fetchCreativeIdeas(nextStrategy);
+    } else {
+      setSelectedStrategyId(strategyId);
+    }
   };
 
   const handleSaveCanvasImage = async (dataUrl: string, meta: { prompt: string; preset: AssetPreset }) => {
@@ -1021,18 +1243,28 @@ const App: React.FC = () => {
 
   const handleGeneratePaidStrategy = async (input: PaidCampaignInput) => {
     if (!activeExpert || !activeProduct) return alert("Selecione expert e oferta.");
+    setMarketingPlanProvider('Gemini');
+    setBuilderPlan(null);
+    setCreativeIdeas([]);
     await checkApiKey();
     setIsLoading(true);
     setMarketingError(null);
     try {
       const result: AiPlanResult = await generatePaidCampaignStrategy(activeExpert, activeProduct, input);
       const plan = result.plan;
-      if (result.provider === 'OpenRouter') {
+      const provider = result.provider;
+      if (provider === 'OpenRouter') {
         triggerAiFallback(result.notice || 'Fallback para OpenRouter após quota do Gemini.');
       }
-      setMarketingPlan(plan);
+    setMarketingPlan(plan);
+    setMarketingPlanProvider(provider);
+    setBuilderNote(result.notice);
+    setPaidCampaignInput(input);
       setActiveModule('marketing');
       handleSaveProject();
+      if (sections.length > 0) {
+        await fetchCreativeIdeas(selectedStrategy ?? undefined);
+      }
       setSaveMessage("✅ Plano de campanha gerado");
       setTimeout(() => setSaveMessage(null), 2000);
     } catch (e) {
@@ -1190,7 +1422,22 @@ const App: React.FC = () => {
            } finally { setIsLoading(false); }
          }} onReviewChapter={handleReviewChapter} onGenerateCover={handleGenerateEbookCover} onUpdateSettings={handleUpdateEbookSettings} onIllustrateChapter={() => {}} />}
         {activeModule === 'vsl' && <VslPanel script={vslScript} uiTheme={uiTheme} isLoadingAudio={false} setIsLoadingAudio={() => {}} />}
-        {activeModule === 'marketing' && <MarketingStrategyPanel plan={marketingPlan} onSavePlan={() => handleSaveProject()} />}
+        {activeModule === 'marketing' && (
+          <MarketingWorkflowPanel
+            plan={marketingPlan}
+            creativeIdeas={creativeIdeas}
+            builderPlan={builderPlan}
+            expert={activeExpert}
+            product={activeProduct}
+            onRefreshCreatives={handleRefreshCreatives}
+            isGeneratingCreatives={isGeneratingCreatives}
+            onSavePlan={() => handleSaveProject()}
+            marketing={marketing}
+            strategySuggestions={STRATEGY_SUGGESTIONS}
+            selectedStrategyId={selectedStrategyId}
+            onSelectStrategy={handleSelectStrategy}
+          />
+        )}
         
         {['strategy', 'product', 'builder', 'analytics', 'library'].includes(activeModule) && (
           <PreviewPanel 

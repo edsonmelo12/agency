@@ -1,6 +1,7 @@
 
-import { GoogleGenAI, Part, Type, Modality } from "@google/genai";
-import { GenerationOptions, PageType, Section, Producer, ProductInfo, ImageAspectRatio, VisualStyle, Ebook, EbookChapter, VslScript, SeoSettings, AssetPreset, ImageExportFormat, EbookConfig, PaidCampaignInput, PaidCampaignPlan, AiPlanResult, ImageFallbackReason } from "../types";
+import { GoogleGenAI, Type, Modality } from "@google/genai";
+import { PageType } from "../types.ts";
+import type { GenerationOptions, Section, Producer, ProductInfo, StrategySuggestion, ImageAspectRatio, VisualStyle, Ebook, EbookChapter, VslScript, SeoSettings, AssetPreset, ImageExportFormat, EbookConfig, PaidCampaignInput, PaidCampaignPlan, AiPlanResult, ImageFallbackReason } from "../types.ts";
 
 export interface ApiKeyLeakDetail {
   message: string;
@@ -365,6 +366,13 @@ const getSectionLayoutRule = (sectionId: string) => {
     return 'Layout: siga o layout fixo do autor com duas colunas.';
   }
   return 'Layout: conteúdo direto no fundo da seção (sem card centralizado). Evite wrapper com bg/rounded/shadow e max-w.';
+};
+
+const limitWords = (text: string, maxWords: number) => {
+  if (!text) return text;
+  const words = text.trim().split(/\s+/);
+  if (words.length <= maxWords) return text.trim();
+  return words.slice(0, maxWords).join(' ') + '...';
 };
 
 const stripCardWrapper = (html: string) => {
@@ -1816,12 +1824,26 @@ Use layout responsivo em duas colunas quando possível.`,
   return postProcessGeneratedHTML([section], expert, product)[0];
 };
 
-export const generateCreativeCampaign = async (sections: Section[], expert: Producer, product: ProductInfo): Promise<any[]> => {
+export const generateCreativeCampaign = async (
+  sections: Section[],
+  expert: Producer,
+  product: ProductInfo,
+  strategy?: StrategySuggestion
+): Promise<any[]> => {
   const ai = createGenAiClient();
   const proofText = product.proofStats ? `Provas concretas: ${product.proofStats}.` : '';
   const mechanismText = product.uniqueMechanism ? `Mecanismo único: ${product.uniqueMechanism}.` : '';
   const anchorText = product.anchorPrice || product.anchorSavings
     ? `Ancoragem: preço cheio ${product.anchorPrice || 'não informado'}; economia ${product.anchorSavings || 'não informada'}.`
+    : '';
+  const strategyText = strategy
+    ? `
+  Estratégia selecionada: ${strategy.title} (${strategy.stage}) – ${strategy.objective}.
+  Foco: ${strategy.summary}.
+  Segmentos sugeridos: ${strategy.segments.map((segment) => `${segment.name}: ${segment.focus}`).join(' • ')}.
+  Estilos: ${strategy.tags.join(', ') || 'padrão'}.
+  Headline sugerido: ${strategy.creative.headline}. CTA: ${strategy.creative.cta}.
+  `
     : '';
   const contents = `Crie 3 anúncios para este funil. Produto: ${product.name}. Tom: ${expert.tone}.
   Variação 1 (Engajamento): conteúdo educativo e valor, sem preço. Use o mecanismo único para gerar curiosidade.
@@ -1832,7 +1854,7 @@ export const generateCreativeCampaign = async (sections: Section[], expert: Prod
   Estrutura recomendada: Gancho -> Benefício -> Prova -> CTA.
   Expert: ${expert.name}. Autoridade: ${expert.authority || 'Não informado'}.
   Oferta: ${product.description}. Preço: ${product.price}. Garantia: ${product.guaranteeDays || 7} dias. Bônus: ${product.bonusDescription || 'Não informado'}.
-  ${mechanismText} ${anchorText} ${proofText}`.trim();
+  ${mechanismText} ${anchorText} ${proofText} ${strategyText}`.trim();
   const config = {
     responseMimeType: "application/json",
     responseSchema: {

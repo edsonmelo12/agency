@@ -1,4 +1,4 @@
-import { GenerationOptions, Producer, ProductInfo, Section, EbookConfig, SeoSettings } from "../types";
+import { GenerationOptions, Producer, ProductInfo, Section, StrategySuggestion, EbookConfig, SeoSettings } from "../types";
 
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined) || "/api/genai";
 
@@ -77,8 +77,12 @@ export const injectAssetIntoPage = async (
   product: ProductInfo
 ): Promise<Section> => callProxy("injectAssetIntoPage", ensureArgs([type, asset, expert, product]));
 
-export const generateCreativeCampaign = async (sections: Section[], expert: Producer, product: ProductInfo): Promise<any[]> =>
-  callProxy("generateCreativeCampaign", ensureArgs([sections, expert, product]));
+export const generateCreativeCampaign = async (
+  sections: Section[],
+  expert: Producer,
+  product: ProductInfo,
+  strategy?: StrategySuggestion
+): Promise<any[]> => callProxy("generateCreativeCampaign", ensureArgs([sections, expert, product, strategy]));
 
 export const generateMarketingIdeas = async (expert: Producer, product: ProductInfo): Promise<any[]> =>
   callProxy("generateMarketingIdeas", ensureArgs([expert, product]));

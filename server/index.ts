@@ -3,7 +3,7 @@ import cors from 'cors';
 import express from 'express';
 import { JSDOM } from 'jsdom';
 
-import * as geminiService from '../services/geminiService';
+import * as geminiService from '../services/geminiService.ts';
 
 const dom = new JSDOM('<!DOCTYPE html>');
 (globalThis as any).window = dom.window as any;

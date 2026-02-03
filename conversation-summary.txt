@@ -1,0 +1,5 @@
+Resumo da sessão:
+- Investigar Moltbot gateway, que reinicia com "Missing config" mesmo com config.yaml montado.
+- Burzo: usar node dist/index.js setup dentro de container ativo e monitorar logs; container morre rápido, precisa capturar ID na hora.
+- Foram testados comandos stack deploy, service update, and observing logs.
+- Próximos passos sugeridos: (1) rodar node dist/index.js setup rápido após container subir; (2) redeploy stack e restart service; (3) monitorar logs e validar https://agente.portaldemidias.com.br.

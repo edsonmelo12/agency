@@ -38,3 +38,8 @@ Mantenha esse arquivo atualizado se novos scripts de segurança forem adicionado
    Ele usa `services/geminiService.ts` no backend e expõe `/api/genai` para as operações.  
 3. Configure o frontend para apontar para o proxy (o Vite já faz isso via `VITE_API_PROXY=http://localhost:4001`).  
 4. Agora o front chama `services/genaiClient.ts`, que dispara `fetch('/api/genai', { action, args })`. Nenhum valor `VITE_GEMINI_API_KEY` é usado no bundle, então o Google nunca mais detectará a chave como exposta.
+## Fluxo rápido (backend + Vite juntos)
+
+- Use `npm run dev:all` para iniciar o proxy Express e o Vite em paralelo; o script já carrega `.env.local` (via `DOTENV_CONFIG_PATH`) e mantém o console do proxy e do front lado a lado.
+- Mantenha o `.env.local` sincronizado com as chaves mais recentes (ou use `.env` como fallback) antes de rodar `dev:all` para que o proxy tenha acesso ao `GEMINI_API_KEY`.
+- Se preferir, pode continuar usando `npm run server:start` e `npm run dev` em abas separadas; o `dev:all` automatiza esse emparelhamento.

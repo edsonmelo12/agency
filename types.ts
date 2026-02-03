@@ -4,10 +4,12 @@
  * Essas interfaces definem o contrato de dados entre os serviços de IA e a interface do usuário.
  */
 
-export enum PageType {
-  SALES = 'SALES', // Foco em conversão direta
-  INSTITUTIONAL = 'INSTITUTIONAL' // Foco em autoridade e informações
-}
+export const PageType = {
+  SALES: 'SALES', // Foco em conversão direta
+  INSTITUTIONAL: 'INSTITUTIONAL' // Foco em autoridade e informações
+} as const;
+
+export type PageType = (typeof PageType)[keyof typeof PageType];
 
 export type FontPair = 'Modern' | 'Elegant' | 'Tech' | 'Minimal';
 export type BrandTone = 'Persuasive' | 'Professional' | 'Friendly' | 'Technical' | 'Urgent';
@@ -280,6 +282,64 @@ export interface PaidCampaignPlan {
   copy: { headline: string; body: string; cta: string };
   checklist: string[];
   nextSteps: string[];
+}
+
+export type FunnelStage = 'Topo' | 'Meio' | 'Fundo';
+
+export interface CreativeIdea {
+  type: string;
+  angle: string;
+  adCopy: string;
+  imagePrompt: string;
+  visualStyle: string;
+  stage?: FunnelStage;
+  variant?: number;
+  cta?: string;
+  wordCount?: number;
+}
+
+export interface StrategySuggestion {
+  id: string;
+  stage: FunnelStage;
+  title: string;
+  objective: string;
+  summary: string;
+  segments: CampaignSegment[];
+  metrics: string[];
+  tags: string[];
+  creative: {
+    headline: string;
+    body: string;
+    cta: string;
+  };
+  budgetPerDay: number;
+  utmTemplate: string;
+  checklistAdditions: string[];
+}
+
+export interface CampaignSegment {
+  name: string;
+  focus: string;
+  budget: string;
+}
+
+export interface BudgetSimulation {
+  label: string;
+  budget: string;
+  cpcEstimate: string;
+}
+
+export interface BuilderPlan {
+  campaignName: string;
+  objective: string;
+  budgetPerDay: string;
+  segments: CampaignSegment[];
+  checklist: string[];
+  simulations: BudgetSimulation[];
+  utmTemplate: string;
+  providerName: 'Gemini' | 'OpenRouter' | 'Unknown';
+  providerConfidence: number;
+  note?: string;
 }
 
 export interface WebhookConfig {

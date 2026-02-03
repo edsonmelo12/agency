@@ -34,14 +34,18 @@ export const Select: React.FC<React.SelectHTMLAttributes<HTMLSelectElement>> = (
   </select>
 );
 
-export const Card: React.FC<{ children: React.ReactNode; color?: 'blue' | 'indigo' | 'slate' | 'white' }> = ({ children, color = 'white' }) => {
+export const Card: React.FC<{ children: React.ReactNode; color?: 'blue' | 'indigo' | 'slate' | 'white'; className?: string }> = ({
+  children,
+  color = 'white',
+  className = ''
+}) => {
   const styles = {
     white: 'bg-panel border-border',
     blue: 'bg-blue-50 dark:bg-blue-900/10 border-blue-100 dark:border-blue-800/50',
     indigo: 'bg-indigo-50 dark:bg-indigo-900/10 border-indigo-100 dark:border-indigo-800/50',
     slate: 'bg-slate-800 dark:bg-slate-950 border-slate-700 dark:border-slate-800 text-white'
   };
-  return <div className={`p-5 border rounded-2xl shadow-sm space-y-4 ${styles[color]}`}>{children}</div>;
+  return <div className={`p-5 border rounded-2xl shadow-sm space-y-4 ${styles[color]} ${className}`.trim()}>{children}</div>;
 };
 
 export const Button: React.FC<{ 
