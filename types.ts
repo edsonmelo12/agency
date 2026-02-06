@@ -86,6 +86,12 @@ export interface SocialLinks {
   email?: string;
 }
 
+export interface LegalLinks {
+  terms?: string;
+  privacy?: string;
+  contact?: string;
+}
+
 export interface BrandKit {
   primaryColor?: string;
   secondaryColor?: string;
@@ -133,6 +139,7 @@ export interface ProductInfo {
   orderBump: { active: boolean; name: string; price: string; description: string; };
   upsell: { active: boolean; name: string; price: string; description: string; };
   createdAt: number;
+  legalLinks?: LegalLinks;
 }
 
 /**
@@ -296,6 +303,13 @@ export interface CreativeIdea {
   variant?: number;
   cta?: string;
   wordCount?: number;
+  visualPrompts?: string[];
+  objective?: string;
+  awarenessLevel?: string;
+  origin?: 'ia' | 'manual';
+  intention?: string;
+  format?: string;
+  tags?: string[];
 }
 
 export interface StrategySuggestion {

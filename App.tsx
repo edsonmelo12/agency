@@ -1,20 +1,26 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import LandingExperience from './components/LandingExperience';
 import Sidebar from './components/Sidebar';
 import PreviewPanel from './components/PreviewPanel';
 import StudioPanel from './components/StudioPanel';
 import BookPanel from './components/BookPanel';
 import VslPanel from './components/VslPanel';
 import MarketingWorkflowPanel from './components/MarketingWorkflowPanel';
+import { UsersModuleProvider } from './components/sidebar/UsersModuleContext';
+import UsersWorkspace from './components/users/UsersWorkspace';
 import { 
   GenerationOptions, Section, ActiveElement, Project, 
   PageType, MarketingSettings, SeoSettings, Producer, ProductInfo, StudioImage, ImageFallbackReason, VisualStyle, ImageAspectRatio, ImageExportFormat,
   Ebook, VslScript, AssetPreset, EbookConfig, PaidCampaignInput, PaidCampaignPlan, CreativeIdea, BuilderPlan, CampaignSegment, StrategySuggestion, AiFallbackLog, AiPlanResult
 } from './types';
-import { generateLandingPage, generateStudioImage, generateBookOutline, generateChapterContent, reviewChapterContent, generateVslScript, refineLandingPageContent, injectAssetIntoPage, generateCreativeCampaign, generateSeoFromSections, generateMarketingIdeas, generatePaidAdsPlan, generatePaidCampaignStrategy, regenerateSectionWithCRO, hydrateSectionContent, ApiKeyLeakDetail } from './services/genaiClient';
+import { generateLandingPage, generateStudioImage, generateBookOutline, generateChapterContent, reviewChapterContent, generateVslScript, refineLandingPageContent, injectAssetIntoPage, generateCreativeCampaign, generateCreativeVariants, generateSeoFromSections, generateMarketingIdeas, generatePaidAdsPlan, generatePaidCampaignStrategy, regenerateSectionWithCRO, hydrateSectionContent, ApiKeyLeakDetail } from './services/genaiClient';
 import { getAllExperts, getProductsByExpert, getProjectsByProduct, saveProject, deleteProject, getAllStudioImages, saveStudioImage, deleteStudioImage, saveEbook, getEbooksByProduct, saveProduct, saveExpert, deleteEbook, saveVslScript, getVslScriptsByProduct, openDB, clearAllData } from './services/dbService';
+import { AuthUser, clearAuthToken, clearAuthUser, readAuthToken, readAuthUser, writeAuthToken, writeAuthUser } from './services/authStorage';
+import { loginAdmin } from './services/authService';
+import AuthGate from './components/AuthGate';
 
-type NavModule = 'strategy' | 'product' | 'builder' | 'analytics' | 'studio' | 'ebook' | 'vsl' | 'library' | 'marketing';
+type NavModule = 'strategy' | 'product' | 'builder' | 'analytics' | 'studio' | 'ebook' | 'vsl' | 'library' | 'marketing' | 'users';
 
 const formatMarketingError = (error: unknown) => {
   if (!error) return 'Falha ao gerar o plano de campanha.';
@@ -224,7 +230,20 @@ const defaultGenerationOptions: GenerationOptions = {
   extractionFlags: { structure: true, copy: true, colors: true }
 };
 
+const resolveInitialRoute = (): 'landing' | 'app' => {
+  if (typeof window === 'undefined') return 'landing';
+  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  if (path === '/' || path === '/landing') return 'landing';
+  return 'app';
+};
+
 const App: React.FC = () => {
+  const [route, setRoute] = useState<'landing' | 'app'>(resolveInitialRoute);
+  const [authToken, setAuthToken] = useState<string | null>(readAuthToken());
+  const [authUser, setAuthUser] = useState<AuthUser | null>(readAuthUser());
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authStatus, setAuthStatus] = useState<string | null>(null);
   const [activeModule, setActiveModule] = useState<NavModule>('strategy');
   const [uiTheme, setUiTheme] = useState<'light' | 'dark'>(() => (safeLocalStorage.read('lb_ui_theme', 'dark') as 'light' | 'dark'));
   const [isLoading, setIsLoading] = useState(false);
@@ -249,6 +268,7 @@ const App: React.FC = () => {
   const [marketingPlanProvider, setMarketingPlanProvider] = useState<'Gemini' | 'OpenRouter' | 'Unknown'>('Gemini');
   const [creativeIdeas, setCreativeIdeas] = useState<CreativeIdea[]>([]);
   const [builderPlan, setBuilderPlan] = useState<BuilderPlan | null>(null);
+  const [customCreatives, setCustomCreatives] = useState<CreativeIdea[]>([]);
   const [builderNote, setBuilderNote] = useState<string | undefined>(undefined);
   const [isGeneratingCreatives, setIsGeneratingCreatives] = useState(false);
   const [selectedStrategyId, setSelectedStrategyId] = useState<string>(STRATEGY_SUGGESTIONS[0]?.id || '');
@@ -292,7 +312,8 @@ const App: React.FC = () => {
     paidCampaignInput,
     marketingPlanProvider,
     selectedStrategyId,
-    builderNote
+    builderNote,
+    customCreatives
   });
 
   useEffect(() => {
@@ -312,6 +333,38 @@ const App: React.FC = () => {
     };
     init();
   }, []);
+
+  useEffect(() => {
+    const handlePop = () => setRoute(resolveInitialRoute());
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
+  }, []);
+
+  const enterApp = () => {
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', '/app');
+      window.scrollTo(0, 0);
+    }
+    setRoute('app');
+  };
+
+  const handleLogin = async (email: string, password: string) => {
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      const response = await loginAdmin(email, password);
+      setAuthToken(response.accessToken);
+      setAuthUser(response.user);
+      setAuthStatus('Sessão iniciada');
+      writeAuthToken(response.accessToken);
+      writeAuthUser(response.user);
+      enterApp();
+    } catch (error: any) {
+      setAuthError(error.message || 'Falha na autenticação');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (activeExpert) {
@@ -367,16 +420,17 @@ const App: React.FC = () => {
 
   const applyProject = (proj: Project | null) => {
     if (!proj) {
-      setActiveProject(null);
-      setSections([]);
-      setMarketingPlan(null);
-      setPaidCampaignInput(null);
-      setMarketingPlanProvider('Gemini');
-      setBuilderPlan(null);
-      setBuilderNote(undefined);
-      setCreativeIdeas([]);
-      return;
-    }
+    setActiveProject(null);
+    setSections([]);
+    setMarketingPlan(null);
+    setPaidCampaignInput(null);
+    setMarketingPlanProvider('Gemini');
+    setBuilderPlan(null);
+    setBuilderNote(undefined);
+    setCreativeIdeas([]);
+    setCustomCreatives([]);
+    return;
+  }
 
     setActiveProject(proj);
     setSections(proj.sections);
@@ -394,6 +448,7 @@ const App: React.FC = () => {
       setMarketingPlan(storedPlan);
       setBuilderNote(proj.options?.builderNote);
       setSelectedStrategyId(proj.options?.selectedStrategyId || STRATEGY_SUGGESTIONS[0]?.id || '');
+      setCustomCreatives(proj.options?.customCreatives || []);
       setCreativeIdeas([]);
     }
   };
@@ -622,6 +677,7 @@ const App: React.FC = () => {
         if (data.paidCampaignInput) setPaidCampaignInput(data.paidCampaignInput);
         if (data.builderPlan) setBuilderPlan(data.builderPlan);
         if (data.selectedStrategyId) setSelectedStrategyId(data.selectedStrategyId);
+        if (data.customCreatives) setCustomCreatives(data.customCreatives);
 
         setSaveMessage("📦 Sucesso! Reiniciando...");
         setTimeout(() => window.location.reload(), 1500);
@@ -631,6 +687,22 @@ const App: React.FC = () => {
       } 
     };
     reader.readAsText(file);
+  };
+
+  const sanitizeForFilename = (value: string) => {
+    if (!value) return 'landing-page';
+    const slug = value
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    return slug || 'landing-page';
+  };
+
+  const resolveExportFileName = () => {
+    const baseTitle = seo.title || activeProduct?.name || 'landing-page';
+    return `landingbuilder-${sanitizeForFilename(baseTitle)}.html`;
   };
 
   const downloadFile = (content: string, fileName: string, contentType: string) => {
@@ -658,6 +730,7 @@ const App: React.FC = () => {
       backup.paidCampaignInput = paidCampaignInput;
       backup.builderPlan = builderPlan;
       backup.selectedStrategyId = selectedStrategyId;
+      backup.customCreatives = customCreatives;
       backup.activeExpertId = activeExpert?.id;
       backup.activeProductId = activeProduct?.id;
       downloadFile(JSON.stringify(backup, null, 2), `backup-full-${Date.now()}.json`, 'application/json');
@@ -1172,6 +1245,23 @@ const App: React.FC = () => {
     }
   };
 
+  const handleGenerateCreativeVariants = async () => {
+    if (!marketingPlan || !activeExpert || !activeProduct) {
+      alert("Selecione expert, oferta e gere um plano antes de gerar variações.");
+      return [];
+    }
+    await checkApiKey();
+    try {
+      const strategy = STRATEGY_SUGGESTIONS.find((strategy) => strategy.id === selectedStrategyId) || null;
+      const variants = await generateCreativeVariants(marketingPlan, strategy, paidCampaignInput, activeExpert, activeProduct);
+      return variants;
+    } catch (err) {
+      console.error("Erro ao gerar variações", err);
+      alert("Falha ao gerar variações. Confira o console para detalhes.");
+      return [];
+    }
+  };
+
   const handleSaveCanvasImage = async (dataUrl: string, meta: { prompt: string; preset: AssetPreset }) => {
     const presetAspect: Record<AssetPreset, ImageAspectRatio> = {
       'Ebook Cover': '3:4',
@@ -1241,6 +1331,39 @@ const App: React.FC = () => {
     }
   };
 
+  const handleGenerateFooter = async () => {
+    if (!activeExpert || !activeProduct) return alert("Selecione expert e oferta.");
+    await checkApiKey();
+    setIsLoading(true);
+    try {
+      const existingFooter = sections.find(s => s.type === 'footer');
+      const newContent = await regenerateSectionWithCRO(
+        'footer',
+        currentOptions,
+        activeExpert,
+        activeProduct,
+        existingFooter?.content || ''
+      );
+      const nextSections = [
+        ...sections.filter(s => s.type !== 'footer'),
+        {
+          id: existingFooter?.id || `footer-${Date.now()}`,
+          type: 'footer',
+          content: newContent
+        }
+      ];
+      setSections(nextSections);
+      handleSaveProject(nextSections);
+      setSaveMessage("✅ Rodapé gerado");
+      setTimeout(() => setSaveMessage(null), 2000);
+    } catch (e) {
+      console.error(e);
+      alert("Falha ao gerar rodapé.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleGeneratePaidStrategy = async (input: PaidCampaignInput) => {
     if (!activeExpert || !activeProduct) return alert("Selecione expert e oferta.");
     setMarketingPlanProvider('Gemini');
@@ -1257,6 +1380,7 @@ const App: React.FC = () => {
         triggerAiFallback(result.notice || 'Fallback para OpenRouter após quota do Gemini.');
       }
     setMarketingPlan(plan);
+    setCustomCreatives([]);
     setMarketingPlanProvider(provider);
     setBuilderNote(result.notice);
     setPaidCampaignInput(input);
@@ -1280,6 +1404,18 @@ const App: React.FC = () => {
     }
   };
 
+  const deriveWhatsappUrl = (value?: string) => {
+    if (!value) return null;
+    const digits = value.replace(/\D+/g, '');
+    if (digits.length < 7) return null;
+    return `https://wa.me/${digits}`;
+  };
+
+  const whatsappLink = useMemo(() => deriveWhatsappUrl(activeExpert?.socialLinks?.whatsapp), [activeExpert?.socialLinks?.whatsapp]);
+  const chatLabel = useMemo(() => (activeExpert?.name ? `Falar com ${activeExpert.name}` : 'Abrir conversa'), [activeExpert?.name]);
+  const chatWidgetHtml = useMemo(() => buildChatWidgetHtml(whatsappLink, chatLabel), [whatsappLink, chatLabel]);
+  const globalHeadExtras = useMemo(() => buildGlobalHeadExtras(marketing), [marketing]);
+
   const constructFullHTML = () => {
     const cleanForExport = (html: string) =>
       html
@@ -1289,107 +1425,131 @@ const App: React.FC = () => {
         .replace(/\scontenteditable=["']?true["']?/gi, '')
         .replace(/\sdata-lb-editable=["']?true["']?/gi, '');
     const htmlContent = sections.map(s => cleanForExport(s.content)).join('\n');
-    return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>${seo.title}</title><script src="https://cdn.tailwindcss.com?plugins=typography"></script></head><body>${htmlContent}</body></html>`;
+    const base = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>${seo.title}</title><script src="https://cdn.tailwindcss.com?plugins=typography"></script></head><body>${htmlContent}</body></html>`;
+    return hydrateLandingWithGlobals(base, globalHeadExtras, chatWidgetHtml);
   };
 
+  const triggerAiFallback = (message: string) => {
+    setFallbackLog({
+      timestamp: Date.now(),
+      error: message,
+      previous: 'Gemini',
+      current: 'OpenRouter',
+      message,
+    });
+    setFallbackDetailsOpen(true);
+  };
+
+  const handleRetryGemini = () => {
+    setFallbackLog(null);
+    setFallbackDetailsOpen(false);
+    setSaveMessage("⚡ Tentando Gemini novamente...");
+    setTimeout(() => setSaveMessage(null), 2000);
+  };
+
+  const isLandingRoute = route === 'landing';
+
+  if (isLandingRoute) {
+    return (
+      <div className="min-h-screen bg-slate-950">
+        <LandingExperience onEnter={enterApp} />
+      </div>
+    );
+  }
+
   return (
-    <div className={`flex h-screen w-full overflow-hidden ${uiTheme === 'dark' ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
-      <nav className="w-16 bg-slate-900 flex flex-col items-center py-6 gap-6 z-50 shrink-0 border-r border-white/5">
-        <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center mb-4 shadow-lg shrink-0">
-          <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-        </div>
-        <div className="flex-1 flex flex-col gap-5">
-          {(['strategy', 'product', 'vsl', 'ebook', 'studio', 'builder', 'library', 'analytics', 'marketing'] as NavModule[]).map(id => (
-            <button key={id} onClick={() => setActiveModule(id)} className={`p-3 rounded-xl transition-all ${activeModule === id ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-white hover:bg-slate-800'}`}>
-               <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                 {{
-                   strategy: <path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 01-12 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />,
-                   product: <path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />,
-                   vsl: <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />,
-                   ebook: <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />,
-                   studio: <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />,
-                   builder: <path d="M13 10V3L4 14h7v7l9-11h-7z" />,
-                   library: <path d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />,
-                   analytics: <path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />,
-                   marketing: <path d="M3 12h3l3-7 3 14 3-7h3" />
-                 }[id]}
-               </svg>
-            </button>
-          ))}
-        </div>
-        <button
-          onClick={() => {
-            const nextTheme = uiTheme === 'light' ? 'dark' : 'light';
-            setUiTheme(nextTheme);
-            safeLocalStorage.write('lb_ui_theme', nextTheme);
-          }}
-          className="p-3 text-slate-500 hover:text-white"
-        >
-          {uiTheme === 'light' ? '🌙' : '☀️'}
-        </button>
-      </nav>
+    <div className="relative">
+      <UsersModuleProvider uiTheme={uiTheme}>
+        <div className="relative">
+          <div className={`flex h-screen w-full overflow-hidden ${uiTheme === 'dark' ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
+            <nav className="w-16 bg-slate-900 flex flex-col items-center py-6 gap-6 z-50 shrink-0 border-r border-white/5">
+              <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center mb-4 shadow-lg shrink-0">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+              </div>
+              <div className="flex-1 flex flex-col gap-5">
+                {(['strategy', 'product', 'vsl', 'ebook', 'studio', 'builder', 'library', 'analytics', 'users', 'marketing'] as NavModule[]).map(id => (
+                  <button key={id} onClick={() => setActiveModule(id)} className={`p-3 rounded-xl transition-all ${activeModule === id ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-white hover:bg-slate-800'}`}>
+                     <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                       {{
+                         strategy: <path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 01-12 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />,
+                         product: <path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />,
+                         vsl: <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />,
+                         ebook: <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />,
+                         studio: <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />,
+                         builder: <path d="M13 10V3L4 14h7v7l9-11h-7z" />,
+                         library: <path d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />,
+                         analytics: <path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />,
+                         marketing: <path d="M3 12h3l3-7 3 14 3-7h3" />,
+                         users: <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                       }[id]}
+                     </svg>
+                  </button>
+                ))}
+              </div>
+            </nav>
 
-      <Sidebar 
-        module={activeModule} uiTheme={uiTheme} onModuleChange={setActiveModule}
-        activeExpert={activeExpert} onSelectExpert={setActiveExpert}
-        activeProduct={activeProduct} onSelectProduct={setActiveProduct}
-        editingExpert={editingExpert} setEditingExpert={setEditingExpert}
-        editingProduct={editingProduct} setEditingProduct={setEditingProduct}
-        onGenerate={handleGeneratePage} onSaveProject={() => handleSaveProject()}
-        pageVersions={projectVersions}
-        activePageVersionId={activeProject?.id || null}
-        onSelectPageVersion={selectPageVersion}
-        onCreatePageVersion={() => {
-          const name = window.prompt("Nome da nova versão (opcional):") || undefined;
-          createPageVersion(name);
-        }}
-        onDuplicatePageVersion={duplicatePageVersion}
-        onDeletePageVersion={deletePageVersion}
-        onExportJSON={handleExportJSON} onImportJSON={handleImportJSON}
-        isLoading={isLoading} sections={sections}
-        ebooks={ebooks} activeEbookId={activeEbookId} onSelectEbook={setActiveEbookId}
-        onGenerateBookOutline={handleGenerateBook} marketing={marketing} setMarketing={setMarketing}
-        seo={seo} setSeo={setSeo} generationOptions={currentOptions} setGenerationOptions={setCurrentOptions}
-        onDownload={() => downloadFile(constructFullHTML(), 'landing.html', 'text/html')}
-        onOpenPreview={() => {
-          const win = window.open('about:blank', '_blank');
-          if (win) { win.document.write(constructFullHTML()); win.document.close(); }
-        }}
-        onInjectAsset={(type, asset) => injectAssetIntoPage(type, asset, activeExpert!, activeProduct!).then(s => setSections(prev => [...prev, s]))}
-        onGenerateImage={handleGenerateImageRequest}
-        onSyncCreatives={handleSyncCreatives}
-        onGenerateMarketingIdeas={handleGenerateMarketingIdeas}
-        onGeneratePaidAdsPlan={handleGeneratePaidAdsPlan}
-        onSaveCanvasImage={handleSaveCanvasImage}
-        onGeneratePaidStrategy={handleGeneratePaidStrategy}
-        marketingError={marketingError}
-        fallbackLog={fallbackLog}
-        isFallbackDetailsOpen={isFallbackDetailsOpen}
-        onShowFallbackDetails={() => setFallbackDetailsOpen(true)}
-        onCloseFallbackDetails={() => setFallbackDetailsOpen(false)}
-        onRetryWithGemini={handleRetryGemini}
-        onGenerateSeo={async () => {
-          if (!activeProduct) return alert("Selecione uma oferta antes.");
-          if (sections.length === 0) return alert("Gere uma página antes.");
-          await checkApiKey();
-          setIsLoading(true);
-          try {
-            const nextSeo = await generateSeoFromSections(sections, activeProduct);
-            setSeo(prev => ({ ...prev, ...nextSeo }));
-            setSaveMessage("🔎 SEO gerado!");
-          } catch (e) {
-            console.error(e);
-            alert("Falha ao otimizar SEO. Tente novamente.");
-          } finally {
-            setIsLoading(false);
-            setTimeout(() => setSaveMessage(null), 2000);
-          }
-        }}
-        onDeleteEbook={handleDeleteEbook}
-        onRegenerateSection={handleRegenerateSection}
-      />
+            <Sidebar 
+              module={activeModule} uiTheme={uiTheme} onModuleChange={setActiveModule}
+              activeExpert={activeExpert} onSelectExpert={setActiveExpert}
+              activeProduct={activeProduct} onSelectProduct={setActiveProduct}
+              editingExpert={editingExpert} setEditingExpert={setEditingExpert}
+              editingProduct={editingProduct} setEditingProduct={setEditingProduct}
+              onGenerate={handleGeneratePage} onSaveProject={() => handleSaveProject()}
+              pageVersions={projectVersions}
+              activePageVersionId={activeProject?.id || null}
+              onSelectPageVersion={selectPageVersion}
+              onCreatePageVersion={() => {
+                const name = window.prompt("Nome da nova versão (opcional):") || undefined;
+                createPageVersion(name);
+              }}
+              onDuplicatePageVersion={duplicatePageVersion}
+              onDeletePageVersion={deletePageVersion}
+              onGenerateFooter={handleGenerateFooter}
+              onExportJSON={handleExportJSON} onImportJSON={handleImportJSON}
+              isLoading={isLoading} sections={sections}
+              ebooks={ebooks} activeEbookId={activeEbookId} onSelectEbook={setActiveEbookId}
+              onGenerateBookOutline={handleGenerateBook} marketing={marketing} setMarketing={setMarketing}
+              seo={seo} setSeo={setSeo} generationOptions={currentOptions} setGenerationOptions={setCurrentOptions}
+              onDownload={() => downloadFile(constructFullHTML(), resolveExportFileName(), 'text/html')}
+              onOpenPreview={() => {
+                const win = window.open('about:blank', '_blank');
+                if (win) { win.document.write(constructFullHTML()); win.document.close(); }
+              }}
+              onInjectAsset={(type, asset) => injectAssetIntoPage(type, asset, activeExpert!, activeProduct!).then(s => setSections(prev => [...prev, s]))}
+              onGenerateImage={handleGenerateImageRequest}
+              onSyncCreatives={handleSyncCreatives}
+              onGenerateMarketingIdeas={handleGenerateMarketingIdeas}
+              onGeneratePaidAdsPlan={handleGeneratePaidAdsPlan}
+              onSaveCanvasImage={handleSaveCanvasImage}
+              onGeneratePaidStrategy={handleGeneratePaidStrategy}
+              marketingError={marketingError}
+              fallbackLog={fallbackLog}
+              isFallbackDetailsOpen={isFallbackDetailsOpen}
+              onShowFallbackDetails={() => setFallbackDetailsOpen(true)}
+              onCloseFallbackDetails={() => setFallbackDetailsOpen(false)}
+              onRetryWithGemini={handleRetryGemini}
+              onGenerateSeo={async () => {
+                if (!activeProduct) return alert("Selecione uma oferta antes.");
+                if (sections.length === 0) return alert("Gere uma página antes.");
+                await checkApiKey();
+                setIsLoading(true);
+                try {
+                  const nextSeo = await generateSeoFromSections(sections, activeProduct);
+                  setSeo(prev => ({ ...prev, ...nextSeo }));
+                  setSaveMessage("🔎 SEO gerado!");
+                } catch (e) {
+                  console.error(e);
+                  alert("Falha ao otimizar SEO. Tente novamente.");
+                } finally {
+                  setIsLoading(false);
+                  setTimeout(() => setSaveMessage(null), 2000);
+                }
+              }}
+              onDeleteEbook={handleDeleteEbook}
+              onRegenerateSection={handleRegenerateSection}
+            />
 
-      <main className="flex-1 relative min-w-0 flex flex-col bg-slate-100 dark:bg-black overflow-hidden h-full">
+            <main className="flex-1 relative min-w-0 flex flex-col bg-slate-100 dark:bg-black overflow-hidden h-full">
         {saveMessage && <div className="absolute top-6 right-6 bg-emerald-600 text-white px-6 py-3 rounded-full shadow-2xl z-[100] animate-in slide-in-from-right-10 text-[10px] font-black uppercase">{saveMessage}</div>}
         {isLoading && <div className="absolute inset-0 bg-white/60 dark:bg-slate-950/60 backdrop-blur-md flex flex-col items-center justify-center z-[100]"><div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div><p className="text-[10px] font-black uppercase text-slate-500 mt-4 tracking-widest">Estúdio em Operação...</p></div>}
 
@@ -1436,41 +1596,146 @@ const App: React.FC = () => {
             strategySuggestions={STRATEGY_SUGGESTIONS}
             selectedStrategyId={selectedStrategyId}
             onSelectStrategy={handleSelectStrategy}
+            onGenerateCreativeVariants={handleGenerateCreativeVariants}
+            customCreatives={customCreatives}
+            onSaveCustomCreative={(creative) => setCustomCreatives(prev => [...prev, creative])}
           />
         )}
         
         {['strategy', 'product', 'builder', 'analytics', 'library'].includes(activeModule) && (
-          <PreviewPanel 
-            sections={sections} variationSections={variationSections} selectedSectionId={selectedSectionId} activeElement={activeElement} studioImages={studioImages}
+          <PreviewPanel
+            sections={sections}
+            variationSections={variationSections}
+            selectedSectionId={selectedSectionId}
+            activeElement={activeElement}
+            studioImages={studioImages}
             onUpdateSectionContent={handleSectionUpdate}
-            onSelectSection={setSelectedSectionId} onElementSelect={setActiveElement}
+            onSelectSection={setSelectedSectionId}
+            onElementSelect={setActiveElement}
             onRegenerateSection={handleRegenerateSection}
-            onDownload={() => {}} onOpenPreview={() => {
+            onGenerateFooter={handleGenerateFooter}
+            onDownload={() => {}}
+            onOpenPreview={() => {
               const win = window.open('about:blank', '_blank');
-              if (win) { win.document.write(constructFullHTML()); win.document.close(); }
-            }} 
+              if (win) {
+                win.document.write(constructFullHTML());
+                win.document.close();
+              }
+            }}
+            chatWidgetHtml={chatWidgetHtml}
+            globalHeadExtras={globalHeadExtras}
           />
         )}
       </main>
+          </div>
+          {activeModule === 'users' && <UsersWorkspace />}
+        </div>
+      </UsersModuleProvider>
+        {route === 'app' && !authToken && (
+          <AuthGate loading={authLoading} error={authError} status={authStatus} onLogin={handleLogin} />
+        )}
     </div>
   );
 };
 
 export default App;
-  const triggerAiFallback = (message: string) => {
-    setFallbackLog({
-      timestamp: Date.now(),
-      error: message,
-      previous: 'Gemini',
-      current: 'OpenRouter',
-      message,
-    });
-    setFallbackDetailsOpen(true);
-  };
 
-  const handleRetryGemini = () => {
-    setFallbackLog(null);
-    setFallbackDetailsOpen(false);
-    setSaveMessage("⚡ Tentando Gemini novamente...");
-    setTimeout(() => setSaveMessage(null), 2000);
-  };
+const buildChatWidgetHtml = (link?: string | null, label?: string | null) => {
+  if (!link) return '';
+  const safeLabel = label || 'Abrir conversa';
+  return `<div class="fixed right-6 bottom-6 z-[999] flex items-center justify-center">
+    <a href="${link}" target="_blank" rel="noreferrer" class="group flex items-center gap-3 rounded-full bg-green-500 text-white px-5 py-3 shadow-2xl shadow-green-500/50 transition-transform duration-300 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400">
+      <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.472-.149-.672.149s-.771.967-.947 1.166c-.174.199-.347.224-.644.075-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.654-2.059-.174-.297-.018-.458.131-.606.134-.133.297-.347.446-.52.149-.174.199-.298.298-.497.099-.198.049-.372-.025-.521-.075-.149-.672-1.618-.921-2.214-.242-.579-.487-.5-.672-.51l-.572-.01c-.199 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.262.489 1.694.625.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.174-1.413-.074-.122-.273-.198-.57-.347z" />
+      </svg>
+      <span class="text-[11px] font-bold uppercase tracking-wider">${safeLabel}</span>
+    </a>
+  </div>`;
+};
+
+const buildMetaPixelSnippet = (id: string) => `
+<script>
+  !function(f,b,e,v,n,t,s){
+    if(f.fbq) return;
+    n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+    if(!f._fbq) f._fbq=n;
+    n.push=n;
+    n.loaded=!0;
+    n.version='2.0';
+    n.queue=[];
+    t=b.createElement(e);
+    t.async=!0;
+    t.src=v;
+    s=b.getElementsByTagName(e)[0];
+    s.parentNode.insertBefore(t,s);
+  }(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
+  fbq('init', '${id}');
+  fbq('track', 'PageView');
+</script>
+<noscript>
+  <img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${id}&ev=PageView&noscript=1" alt="Meta Pixel"/>
+</noscript>`;
+
+const buildGa4Snippet = (id: string) => `
+<script async src="https://www.googletagmanager.com/gtag/js?id=${id}"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', '${id}');
+</script>
+<noscript>
+  <iframe src="https://www.googletagmanager.com/ns.html?id=${id}" height="0" width="0" style="display:none;visibility:hidden" title="GA4"></iframe>
+</noscript>`;
+
+const buildTikTokSnippet = (id: string) => `
+<script>
+  !function(w,d,t,u,n,s,e){
+    w['ttq'] = w['ttq'] || [];
+    n = w['ttq'];
+    n.methods = ["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie"];
+    n.setAndDefer = function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)));};};
+    for(let i=0;i<n.methods.length;i++) n.setAndDefer(n,n.methods[i]);
+    n.instance = function(t){for(let e=0;e<n.methods.length;e++) n.setAndDefer(n.instance(t),n.methods[e]);return n.instance(t);};
+    n.load = function(e,s){const o='https://analytics.tiktok.com/i18n/pixel/events.js';n._i = n._i || [];n._i.push([e,s]);
+    s=d.createElement(t);s.async=!0; s.src=o;
+    e=d.getElementsByTagName(t)[0];e.parentNode.insertBefore(s,e);};
+  }(window, document, 'script', 'https://analytics.tiktok.com/i18n/pixel/sdk.js', 'ttq');
+  ttq.load('${id}');
+  ttq.page();
+</script>`;
+
+const buildGlobalHeadExtras = (marketing: MarketingSettings) => {
+  const snippets: string[] = [];
+  if (marketing.metaPixelId) {
+    snippets.push(buildMetaPixelSnippet(marketing.metaPixelId));
+  }
+  if (marketing.googleAnalyticsId) {
+    snippets.push(buildGa4Snippet(marketing.googleAnalyticsId));
+  }
+  if (marketing.tiktokPixelId) {
+    snippets.push(buildTikTokSnippet(marketing.tiktokPixelId));
+  }
+  return snippets.join('\n');
+};
+
+const hydrateLandingWithGlobals = (html: string, headExtras: string, bodyExtras: string) => {
+  let updated = html;
+  if (headExtras) {
+    const headMatch = /<\/head>/i;
+    if (headMatch.test(updated)) {
+      updated = updated.replace(/<\/head>/i, `${headExtras}\n</head>`);
+    } else {
+      updated = `${updated}\n${headExtras}`;
+    }
+  }
+  if (bodyExtras) {
+    const bodyMatch = /<\/body>/i;
+    if (bodyMatch.test(updated)) {
+      updated = updated.replace(/<\/body>/i, `${bodyExtras}\n</body>`);
+    } else {
+      updated = `${updated}\n${bodyExtras}`;
+    }
+  }
+  return updated;
+};

@@ -38,3 +38,53 @@ body {
   background: var(--color-paper);
   color: var(--color-ink);
 }
+
+html {
+  scroll-behavior: smooth;
+}
+
+#section-footer {
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: 28px;
+  box-shadow: var(--shadow-card);
+  padding: 3rem 2rem;
+  margin-top: 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+#section-footer .footer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+}
+
+#section-footer a {
+  color: var(--color-primary);
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+#section-footer a:hover {
+  color: var(--color-accent);
+  transform: translateY(-2px);
+}
+
+#section-footer .legal-links {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+
+#section-footer .footer-cta {
+  align-self: flex-start;
+  background: var(--color-primary);
+  color: white;
+  padding: 0.75rem 1.75rem;
+  border-radius: 999px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}

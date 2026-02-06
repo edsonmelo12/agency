@@ -24,7 +24,8 @@ Documentos anteriores definem o plano, a matriz de skills e o kanban. Este check
 - [ ] Montar validador anti-proibições (lista de termos bloqueados, limites de comprimento, CTA).  
 - [ ] Definir sistema de tags de estilo (emocional, direto, autoridade) e registrar qual variante o usuário aprovou.  
 - [ ] Mapear integração com gerador de imagens (prompts, mockups, prompts base) e salvar referências.  
-- [ ] Atualizar documentação com as regras de entrada/saída do Agente 2.
+- [ ] Atualizar documentação com as regras de entrada/saída do Agente 2.  
+- [ ] Confirmar que a geração de novas copies/prompts utiliza o funil/objetivo ativo (stage + métricas) e que o modal “Adicionar copy/prompt” registra esses campos antes de acionar a IA.  
 
 ## Fase 3 – Builder Técnico + Resumo
 - [ ] Consumir blueprint e criativos aprovados para montar campanha → conjunto → anúncios; documentar hierarquia.  

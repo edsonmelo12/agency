@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import MarketingStrategyPanel from './MarketingStrategyPanel';
 import { Button, Card } from './ui/BaseComponents';
 import {
@@ -24,6 +24,9 @@ interface Props {
   strategySuggestions: StrategySuggestion[];
   selectedStrategyId: string;
   onSelectStrategy: (strategyId: string) => void;
+  onGenerateCreativeVariants: () => Promise<CreativeIdea[]>;
+  customCreatives: CreativeIdea[];
+  onSaveCustomCreative: (creative: CreativeIdea) => void;
 }
 
 const StepCard: React.FC<{ step: number | string; title: string; subtitle?: string; className?: string; children: React.ReactNode }> = ({
@@ -154,6 +157,311 @@ const StrategyFilterSelect: React.FC<{ value: string; onChange: (value: string) 
   </select>
 );
 
+interface ManualCreativePayload {
+  copy: string;
+  cta: string;
+  prompts: string[];
+  intention: string;
+  format: string;
+  tags: string[];
+}
+
+const tagOptions = ['emotional', 'authority', 'urgency', 'proof', 'benefit', 'curiosity'];
+
+const CustomCreativeModal: React.FC<{
+  open: boolean;
+  stage: FunnelStage;
+  plan: PaidCampaignPlan | null;
+  objectiveLabel: string;
+  onClose: () => void;
+  onSubmit: (payload: ManualCreativePayload, keepOpen?: boolean) => void;
+  onGenerateVariants: () => Promise<CreativeIdea[]>;
+}> = ({ open, stage, plan, objectiveLabel, onClose, onSubmit, onGenerateVariants }) => {
+  const [copy, setCopy] = React.useState('');
+  const [cta, setCta] = React.useState('Garantir agora');
+  const [promptText, setPromptText] = React.useState('');
+  const [intention, setIntention] = React.useState('Conversão direta');
+  const [format, setFormat] = React.useState('Reels');
+  const [selectedTags, setSelectedTags] = React.useState<string[]>([]);
+  const [generatedVariants, setGeneratedVariants] = React.useState<CreativeIdea[]>([]);
+  const [isGeneratingVariants, setIsGeneratingVariants] = React.useState(false);
+  const [variantError, setVariantError] = React.useState<string | null>(null);
+  const [selectedVariantIndex, setSelectedVariantIndex] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    if (!open) {
+      setCopy('');
+      setCta('Garantir agora');
+      setPromptText('');
+      setGeneratedVariants([]);
+      setVariantError(null);
+      setSelectedVariantIndex(null);
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  const prompts = promptText
+    .split('\n')
+    .map(p => p.trim())
+    .filter(Boolean);
+
+  const instructions = [
+    'Gancho claro → benefício específico → prova breve → CTA direto',
+    'Use prova/autoridade dentro das 70 palavras e mantenha CTA no final',
+    'Defina o formato recomendado (Stories/Reels/Feed) e o gatilho testado'
+  ];
+
+  const handleSubmit = (keepOpen: boolean = false) => {
+    if (!copy.trim()) return;
+    onSubmit(
+      {
+        copy: copy.trim(),
+        cta: cta.trim(),
+        prompts,
+        intention,
+        format,
+        tags: selectedTags
+      },
+      keepOpen
+    );
+    if (!keepOpen) {
+      onClose();
+    } else {
+      setCopy('');
+      setCta('Garantir agora');
+      setPromptText('');
+      setSelectedTags([]);
+      setSelectedVariantIndex(null);
+    }
+  };
+
+  const handleGenerateVariants = async () => {
+    setVariantError(null);
+    setIsGeneratingVariants(true);
+    try {
+      const variants = await onGenerateVariants();
+      setGeneratedVariants(variants);
+    } catch (err) {
+      console.error(err);
+      setVariantError('Falha ao gerar variações. Tente novamente.');
+    } finally {
+      setIsGeneratingVariants(false);
+    }
+  };
+
+  const handleUseVariant = (variant: CreativeIdea, index: number) => {
+    setCopy(variant.adCopy || '');
+    setCta(variant.cta || 'Garantir agora');
+    const promptsValue = variant.visualPrompts?.length
+      ? variant.visualPrompts.join('\n')
+      : variant.imagePrompt || '';
+    setPromptText(promptsValue);
+    setSelectedVariantIndex(index);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-black uppercase tracking-widest text-slate-900 dark:text-white">Nova copy/prompt ({stage})</h3>
+            <p className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400">{objectiveLabel}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-900 dark:hover:text-white text-sm font-black uppercase">Fechar</button>
+        </div>
+        <div className="space-y-4 text-sm text-slate-700 dark:text-slate-200">
+          <label className="block">Anúncio (até 70 palavras)</label>
+          <textarea
+            value={copy}
+            onChange={(e) => setCopy(e.target.value)}
+            rows={3}
+            className="w-full rounded-2xl border border-border bg-panel/80 p-3 text-sm"
+          />
+          <label>CTA</label>
+          <input
+            value={cta}
+            onChange={(e) => setCta(e.target.value)}
+            className="w-full rounded-2xl border border-border bg-panel/80 p-3 text-sm"
+          />
+          <label>Prompts (cada linha vira uma variação)</label>
+          <textarea
+            value={promptText}
+            onChange={(e) => setPromptText(e.target.value)}
+            rows={3}
+            className="w-full rounded-2xl border border-border bg-panel/80 p-3 text-sm"
+          />
+          {prompts.length > 0 && (
+            <ul className="space-y-1 text-xs text-slate-500 dark:text-slate-300">
+              {prompts.map((prompt, idx) => (
+                <li key={`preview-${idx}`} className="rounded-full border border-slate-200 px-3 py-1">
+                  Prompt #{idx + 1}: {prompt}
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 dark:bg-slate-900/70 p-3 space-y-2">
+            <p className="text-[10px] uppercase tracking-widest text-slate-500">Funil ativo</p>
+            <div className="grid gap-2 sm:grid-cols-3 text-[12px]">
+              <div className="rounded-2xl border border-slate-200 bg-white/80 p-2">
+                <p className="text-[9px] uppercase text-slate-400">Topo</p>
+                <p className="text-slate-800 text-sm line-clamp-2">{plan?.funnel?.top || '—'}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white/80 p-2">
+                <p className="text-[9px] uppercase text-slate-400">Meio</p>
+                <p className="text-slate-800 text-sm line-clamp-2">{plan?.funnel?.middle || '—'}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white/80 p-2">
+                <p className="text-[9px] uppercase text-slate-400">Fundo</p>
+                <p className="text-slate-800 text-sm line-clamp-2">{plan?.funnel?.bottom || '—'}</p>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white/80 p-3 space-y-2">
+            <p className="text-[10px] uppercase text-slate-500">Instruções rápidas</p>
+            <ul className="list-disc list-inside text-[10px] text-slate-500 space-y-1">
+              {instructions.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Intenção</label>
+              <select
+                value={intention}
+                onChange={(e) => setIntention(e.target.value)}
+                className="w-full rounded-xl border border-border bg-panel/80 p-2 text-sm"
+              >
+                <option value="Conversão direta">Conversão direta</option>
+                <option value="Lead magnet">Lead magnet</option>
+                <option value="Prova social">Prova social</option>
+                <option value="Escassez/urgência">Escassez/urgência</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Formato</label>
+              <select
+                value={format}
+                onChange={(e) => setFormat(e.target.value)}
+                className="w-full rounded-xl border border-border bg-panel/80 p-2 text-sm"
+              >
+                <option value="Reels">Reels</option>
+                <option value="Stories">Stories</option>
+                <option value="Feed">Feed</option>
+                <option value="Carrossel">Carrossel</option>
+                <option value="Vídeo curto">Vídeo curto</option>
+              </select>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Tags de estilo (opcional)</p>
+            <div className="flex flex-wrap gap-2">
+              {tagOptions.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  className={`px-3 py-1 rounded-full border text-[9px] uppercase tracking-widest ${
+                    selectedTags.includes(tag)
+                      ? 'bg-primary text-white border-primary'
+                      : 'bg-white text-slate-600 border-slate-200'
+                  }`}
+                  onClick={() => {
+                    setSelectedTags((prev) =>
+                      prev.includes(tag) ? prev.filter((item) => item !== tag) : [...prev, tag]
+                    );
+                  }}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="mt-4 space-y-3">
+          <Button
+            variant="primary"
+            onClick={handleGenerateVariants}
+            disabled={isGeneratingVariants}
+            className="w-full text-[10px]"
+          >
+            {isGeneratingVariants ? 'Gerando variações...' : 'Gerar IA com o funil atual'}
+          </Button>
+          {variantError && <p className="text-[10px] text-rose-500">{variantError}</p>}
+          {generatedVariants.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Variações sugeridas</p>
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                {generatedVariants.map((variant, idx) => (
+                  <div
+                    key={`variant-${idx}`}
+                    className={`rounded-2xl border px-3 py-2 text-sm bg-white/80 shadow-sm dark:bg-slate-900/70 ${
+                      selectedVariantIndex === idx ? 'border-primary/80 bg-primary/10 dark:bg-primary/10' : 'border-border'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                      <span>{variant.stage || 'Foco'}</span>
+                      <span>{variant.awarenessLevel || 'Teste'}</span>
+                    </div>
+                    <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-white leading-snug">{variant.adCopy}</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">CTA: {variant.cta || 'Sem CTA'}</p>
+                    <div className="flex flex-wrap gap-2 items-center text-[10px] text-slate-500 dark:text-slate-400">
+                      <span className="rounded-full border border-slate-200 px-2 py-1">{variant.visualStyle}</span>
+                      <span className="rounded-full border border-slate-200 px-2 py-1">{variant.objective || 'Objetivo'}</span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button
+                        variant="secondary"
+                        onClick={() => handleUseVariant(variant, idx)}
+                        className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest"
+                      >
+                        Usar variação
+                      </Button>
+                      <span className="text-[9px] text-slate-500 dark:text-slate-400">{variant.origin === 'ia' ? 'IA' : 'Manual'}</span>
+                    </div>
+                    {variant.visualPrompts?.length > 0 && (
+                      <div className="mt-2 space-y-1 text-[9px] text-slate-500 dark:text-slate-300">
+                        {variant.visualPrompts.map((prompt, promptIdx) => (
+                          <p key={`variant-prompt-${idx}-${promptIdx}`} className="rounded-full border border-dashed border-slate-200 px-2 py-0.5">
+                            Prompt {promptIdx + 1}: {prompt}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-[10px] font-black uppercase rounded-2xl border border-border text-slate"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSubmit(true)}
+            className="px-4 py-2 text-[10px] font-black uppercase rounded-2xl bg-slate-900 text-white"
+          >
+            Salvar e adicionar outro
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            className="px-4 py-2 text-[10px] font-black uppercase rounded-2xl bg-primary text-white"
+          >
+            Salvar copy/prompt
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const MarketingWorkflowPanel: React.FC<Props> = ({
   plan,
   creativeIdeas,
@@ -166,7 +474,10 @@ const MarketingWorkflowPanel: React.FC<Props> = ({
   onSavePlan,
   strategySuggestions,
   selectedStrategyId,
-  onSelectStrategy
+  onSelectStrategy,
+  onGenerateCreativeVariants,
+  customCreatives,
+  onSaveCustomCreative,
 }) => {
   const hasPlan = Boolean(plan);
   const hasBuilder = Boolean(builderPlan);
@@ -186,12 +497,75 @@ const MarketingWorkflowPanel: React.FC<Props> = ({
     if (!activeStrategy) return creativeIdeas;
     return creativeIdeas.filter(idea => idea.stage === activeStrategy.stage);
   }, [activeStrategy, creativeIdeas]);
-  const heroCreative = activeStageCreatives[0] || creativeIdeas[0] || null;
+  const focusStage = activeStrategy?.stage || 'Fundo';
+  const stageCustomCreatives = React.useMemo(
+    () => customCreatives.filter(idea => idea.stage === focusStage),
+    [customCreatives, focusStage]
+  );
+  const heroCandidate =
+    activeStageCreatives[0] ||
+    stageCustomCreatives[0] ||
+    creativeIdeas[0] ||
+    customCreatives[0] ||
+    null;
+  const heroCreative = heroCandidate;
   const variationCreatives = React.useMemo(() => {
     const base = activeStageCreatives.slice(1);
     if (base.length > 0) return base;
     return creativeIdeas.slice(1, 6);
   }, [activeStageCreatives, creativeIdeas]);
+  const isSameCreative = (a?: CreativeIdea, b?: CreativeIdea) => {
+    if (!a || !b) return false;
+    return a.adCopy === b.adCopy && a.cta === b.cta;
+  };
+  const kitVariations = React.useMemo(() => {
+    const filteredCustom = customCreatives.filter(creative => !isSameCreative(creative, heroCandidate));
+    return [...variationCreatives, ...filteredCustom];
+  }, [variationCreatives, customCreatives, heroCandidate]);
+  const [isCustomModalOpen, setCustomModalOpen] = React.useState(false);
+  const clampWordsLocal = (text: string, maxWords: number = 70) => {
+    if (!text) return '';
+    const words = text.trim().split(/\s+/);
+    if (words.length <= maxWords) return text.trim();
+    return words.slice(0, maxWords).join(' ') + '...';
+  };
+  const objectiveLabel = plan?.copy?.headline || plan?.summary || 'Objetivo do funil não carregado';
+  const creativeHighlights = React.useMemo(() => {
+    const highlights: string[] = [];
+    if (activeStrategy) {
+      highlights.push(`${kitVariations.length} variações alinhadas ao stage ${activeStrategy.stage} (${activeStrategy.objective})`);
+    }
+    if (customCreatives.length > 0) {
+      highlights.push(`${customCreatives.length} variações manuais registradas`);
+    }
+    return highlights;
+  }, [activeStrategy, kitVariations.length, customCreatives.length]);
+
+  const handleCustomModalSubmit = (payload: ManualCreativePayload, keepOpen?: boolean) => {
+    const stage: FunnelStage = activeStrategy ? activeStrategy.stage : 'Fundo';
+    const custom: CreativeIdea = {
+      type: 'custom',
+      angle: stage === 'Topo' ? 'engajamento' : stage === 'Meio' ? 'autoridade' : 'conversao',
+      adCopy: clampWordsLocal(payload.copy),
+      imagePrompt: payload.prompts[0] || `Prompt customizado para o stage ${stage}`,
+      visualStyle: 'Custom Visual',
+      stage,
+      variant: customCreatives.length + 1,
+      cta: payload.cta || 'Garantir agora',
+      wordCount: clampWordsLocal(payload.copy).split(/\s+/).filter(Boolean).length,
+      visualPrompts: payload.prompts.length ? payload.prompts : [payload.prompts[0] || ''],
+      objective: objectiveLabel,
+      awarenessLevel: stage,
+      origin: 'manual',
+      intention: payload.intention,
+      format: payload.format,
+      tags: payload.tags
+    };
+    onSaveCustomCreative(custom);
+    if (!keepOpen) {
+      setCustomModalOpen(false);
+    }
+  };
 
   const exportBlueprint = () => {
     if (!builderPlan) return;
@@ -265,6 +639,15 @@ const MarketingWorkflowPanel: React.FC<Props> = ({
 
   return (
     <div className="h-full overflow-y-auto px-6 py-8 space-y-8 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+      <CustomCreativeModal
+        open={isCustomModalOpen}
+        stage={activeStrategy?.stage || 'Fundo'}
+        plan={plan}
+        objectiveLabel={objectiveLabel}
+        onClose={() => setCustomModalOpen(false)}
+        onSubmit={handleCustomModalSubmit}
+        onGenerateVariants={onGenerateCreativeVariants}
+      />
       {renderStatusBadges()}
       {activeStrategy && <ActiveStrategySummary strategy={activeStrategy} />}
       {renderStrategies()}
@@ -355,9 +738,18 @@ const MarketingWorkflowPanel: React.FC<Props> = ({
             <p className="text-xs uppercase tracking-widest text-slate-500 dark:text-slate-400">Criativos principais + arsenal de variações</p>
             <p className="text-sm text-slate-700 dark:text-slate-300">Copy e prompts ajustados para o estágio ativo e sugestões de teste.</p>
           </div>
-          <Button variant="secondary" onClick={onRefreshCreatives} disabled={isGeneratingCreatives} className="text-[10px]">
-            {isGeneratingCreatives ? 'Regerando...' : 'Regenerar criativos'}
-          </Button>
+          <div className="flex flex-wrap gap-3">
+            <Button variant="secondary" onClick={onRefreshCreatives} disabled={isGeneratingCreatives} className="text-[10px]">
+              {isGeneratingCreatives ? 'Regerando...' : 'Regenerar criativos'}
+            </Button>
+            <button
+              type="button"
+              onClick={() => setCustomModalOpen(true)}
+              className="px-3 py-2 text-[10px] font-black uppercase tracking-widest bg-primary text-white rounded-2xl shadow-sm hover:bg-blue-700 transition-colors"
+            >
+              Adicionar copy/prompt
+            </button>
+          </div>
         </div>
         <div className="mt-4 flex flex-wrap gap-3 rounded-2xl border border-dashed border-slate-200 bg-white/80 p-4 text-[10px] font-black uppercase tracking-widest text-slate-600 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
           <span>Copy hero + 3-5 variantes</span>
@@ -376,29 +768,51 @@ const MarketingWorkflowPanel: React.FC<Props> = ({
                 <span className="rounded-full border border-slate-200 px-3 py-1 bg-white/80 dark:bg-slate-900/70">Visual: {heroCreative.visualStyle}</span>
                 <span className="rounded-full border border-slate-200 px-3 py-1 bg-white/80 dark:bg-slate-900/70">Prompt: {heroCreative.imagePrompt}</span>
               </div>
-            </div>
-            <div className="rounded-2xl border border-border bg-white/90 p-4 shadow-sm dark:bg-slate-900/70 dark:border-slate-800">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-black uppercase tracking-widest text-slate-600 dark:text-slate-300">Arsenal de variações</h4>
-                <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">{variationCreatives.length} sugestões</span>
+              <div className="mt-3 flex flex-wrap gap-3 text-xs uppercase tracking-widest text-slate-500 dark:text-slate-300">
+                <span>CTA: {heroCreative.cta || 'Sem CTA'}</span>
+                <span>Words: {heroCreative.wordCount ?? 0}</span>
               </div>
-              <div className="mt-3 space-y-3">
-                {variationCreatives.length > 0 ? (
-                  variationCreatives.map((idea, index) => (
-                    <div key={`${idea.angle}-${idea.type}-${index}`} className="rounded-2xl border border-border bg-panel/60 p-3 space-y-1">
-                      <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-300">
-                        <span>Teste #{index + 1}</span>
-                        <span className="text-[9px] font-black text-primary">{idea.visualStyle}</span>
-                      </div>
-                      <p className="text-sm font-semibold text-slate-900 dark:text-white leading-snug">{idea.adCopy}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">Prompt visual: {idea.imagePrompt}</p>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-slate-500 dark:text-slate-400">Nenhuma variação disponível. Gere criativos para este stage.</p>
-                )}
+              <div className="mt-4 space-y-2 text-[11px] text-slate-500 dark:text-slate-300">
+                {heroCreative.visualPrompts?.map((prompt, idx) => (
+                  <p key={`hero-prompt-${idx}`} className="rounded-2xl border border-dashed border-slate-200 bg-white/60 px-3 py-2 text-left text-[10px] uppercase tracking-widest">
+                    Prompt {idx + 1}: {prompt}
+                  </p>
+                ))}
               </div>
             </div>
+              <div className="rounded-2xl border border-border bg-white/90 p-4 shadow-sm dark:bg-slate-900/70 dark:border-slate-800">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-black uppercase tracking-widest text-slate-600 dark:text-slate-300">Arsenal de variações</h4>
+                  <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">{kitVariations.length} sugestões</span>
+                </div>
+                <div className="mt-3 space-y-3">
+                  {kitVariations.length > 0 ? (
+                    <>
+                      {kitVariations.map((idea, index) => (
+                        <div key={`${idea.angle}-${idea.type}-${index}`} className="rounded-2xl border border-border bg-panel/60 p-3 space-y-1">
+                          <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-300">
+                            <span>Teste #{index + 1}</span>
+                            <span className="text-[9px] font-black text-primary">{idea.visualStyle}</span>
+                          </div>
+                          <p className="text-sm font-semibold text-slate-900 dark:text-white leading-snug">{idea.adCopy}</p>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 space-y-1">
+                            <p>Prompt visual principal: {idea.imagePrompt}</p>
+                            {idea.visualPrompts?.map((prompt, promptIdx) => (
+                              <p key={`${idea.angle}-${index}-prompt-${promptIdx}`}>Variação {promptIdx + 1}: {prompt}</p>
+                            ))}
+                          </div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">CTA: {idea.cta || 'Sem CTA'} • Words: {idea.wordCount ?? 0}</p>
+                          <p className="text-[9px] text-slate-500 dark:text-slate-400 uppercase tracking-widest">
+                            Stage: {idea.stage || focusStage} • Origem: {idea.origin === 'manual' ? 'Manual' : 'IA'}
+                          </p>
+                        </div>
+                      ))}
+                    </>
+                  ) : (
+                    <p className="text-sm text-slate-500 dark:text-slate-400">Nenhuma variação disponível. Gere criativos para este stage.</p>
+                  )}
+                </div>
+              </div>
           </div>
         ) : (
           <p className="text-slate-500 dark:text-slate-400 text-sm">{isGeneratingCreatives ? 'Gerando criativos...' : 'Nenhum criativo disponível ainda.'}</p>
@@ -480,6 +894,33 @@ const MarketingWorkflowPanel: React.FC<Props> = ({
                 </ul>
               </div>
             </div>
+            {kitVariations.length > 0 && (
+              <div className="rounded-2xl border border-dashed border-primary/60 bg-primary/5 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-black uppercase tracking-widest text-primary dark:text-white">Kit de testes alinhado</h4>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-primary/80">{kitVariations.length} variações</span>
+                </div>
+                <div className="grid gap-3">
+                  {kitVariations.map((idea, idx) => (
+                    <div key={`kit-${idx}`} className="rounded-2xl border border-primary/30 bg-white/80 p-3 shadow-sm dark:bg-slate-900/60">
+                      <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-slate-600 dark:text-slate-300">
+                        <span>Stage: {idea.stage || activeStrategy?.stage || 'Fundo'}</span>
+                        <span>Origem: {idea.origin === 'manual' ? 'Manual' : 'IA'}</span>
+                      </div>
+                      <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-white leading-snug">{idea.adCopy}</p>
+                      <div className="mt-2 flex flex-wrap gap-2 items-center text-[10px] text-slate-500 dark:text-slate-400">
+                        <span className="rounded-full border border-slate-200 px-2 py-1">{idea.visualStyle}</span>
+                        <span className="rounded-full border border-slate-200 px-2 py-1">Objetivo: {idea.objective || activeStrategy?.objective || 'Objetivo'}</span>
+                        <span className="rounded-full border border-slate-200 px-2 py-1">Words: {idea.wordCount ?? 0}</span>
+                      </div>
+                      <p className="mt-2 text-[10px] text-slate-500 dark:text-slate-400">
+                        CTA: {idea.cta || 'Sem CTA'} • Awareness: {idea.awarenessLevel || idea.stage || 'Teste'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="flex flex-wrap gap-3 pt-2">
               <Button variant="primary" onClick={exportBlueprint} className="text-[10px]">
                 Exportar campanha
@@ -506,7 +947,7 @@ const MarketingWorkflowPanel: React.FC<Props> = ({
           <span className="text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-400">Checklist + exportação</span>
         </div>
         <div className="rounded-[32px] border border-border bg-panel p-4 shadow-sm dark:bg-slate-900/80">
-          <MarketingStrategyPanel plan={plan} onSavePlan={onSavePlan} />
+          <MarketingStrategyPanel plan={plan} onSavePlan={onSavePlan} creativeHighlights={creativeHighlights} />
         </div>
       </div>
     </div>

@@ -13,6 +13,7 @@ interface Props {
   availableVsl?: VslScript;
   sections: { id: string; type: string }[];
   onRegenerateSection: (sectionId: string, sectionType: string) => void;
+  onGenerateFooter: () => void;
   pageVersions: Project[];
   activePageVersionId: string | null;
   onSelectPageVersion: (id: string) => void;
@@ -23,7 +24,7 @@ interface Props {
 
 const BuilderModule: React.FC<Props> = ({ 
   options, setOptions, onGenerate, onInjectAsset, isLoading, availableEbooks, availableVsl, sections, onRegenerateSection,
-  pageVersions, activePageVersionId, onSelectPageVersion, onCreatePageVersion, onDuplicatePageVersion, onDeletePageVersion
+  pageVersions, activePageVersionId, onSelectPageVersion, onCreatePageVersion, onDuplicatePageVersion, onDeletePageVersion, onGenerateFooter
 }) => {
   const [showDesignSystem, setShowDesignSystem] = useState(false);
   const [selectedSectionId, setSelectedSectionId] = useState('');
@@ -542,7 +543,9 @@ const BuilderModule: React.FC<Props> = ({
         </div>
         <select
           value={selectedSectionId}
-          onChange={(e) => setSelectedSectionId(e.target.value)}
+          onChange={(e) => {
+            setSelectedSectionId(e.target.value);
+          }}
           className="w-full mt-2 p-3 bg-white dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl text-[10px] font-black uppercase text-slate"
         >
           <option value="">Selecione uma seção</option>
@@ -551,10 +554,15 @@ const BuilderModule: React.FC<Props> = ({
               {s.type.toUpperCase()} • {s.id.slice(0, 6)}
             </option>
           ))}
+          <option value="__footer_action__">Rodapé • Gerar rodapé (CRO)</option>
         </select>
         <Button
           variant="secondary"
           onClick={() => {
+            if (selectedSectionId === '__footer_action__') {
+              onGenerateFooter();
+              return;
+            }
             const found = sections.find((s) => s.id === selectedSectionId);
             if (!found) return;
             onRegenerateSection(found.id, found.type);
@@ -562,7 +570,11 @@ const BuilderModule: React.FC<Props> = ({
           disabled={isLoading || !selectedSectionId}
           className="w-full mt-3"
         >
-          {isLoading ? 'Reconstruindo...' : 'Reconstruir Seção'}
+          {isLoading
+            ? 'Reconstruindo...'
+            : selectedSectionId === '__footer_action__'
+              ? 'Gerar rodapé (CRO)'
+              : 'Reconstruir Seção'}
         </Button>
       </Card>
 

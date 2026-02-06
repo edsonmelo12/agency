@@ -17,6 +17,9 @@ interface PreviewPanelProps {
   onSelectSection: (id: string | null) => void;
   onElementSelect: (el: ActiveElement | null) => void;
   onRegenerateSection?: (sectionId: string, sectionType: string) => void;
+  onGenerateFooter?: () => void;
+  chatWidgetHtml?: string;
+  globalHeadExtras?: string;
 }
 
 const PreviewPanel: React.FC<PreviewPanelProps> = ({
@@ -30,6 +33,9 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
   onElementSelect,
   onOpenPreview,
   onRegenerateSection,
+  onGenerateFooter,
+  chatWidgetHtml,
+  globalHeadExtras,
 }) => {
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop');
   const [isIframeReady, setIsIframeReady] = useState(false);
@@ -111,10 +117,10 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
   const createShell = () => `
     <!DOCTYPE html>
     <html lang="pt-BR">
-      <head>
-        <meta charset="UTF-8">
-        <script>
-          window.__tailwindReady = false;
+        <head>
+          <meta charset="UTF-8">
+          <script>
+            window.__tailwindReady = false;
           window.__tailwindPendingRefresh = false;
           window.__tailwindConfig = {
             darkMode: 'class',
@@ -126,6 +132,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
           }
         </script>
         <script defer src="https://cdn.tailwindcss.com?plugins=typography" onload="window.__tailwindReady = true; if (window.__tailwindConfig && window.tailwind && window.tailwind.config) { window.tailwind.config = window.__tailwindConfig; } if (window.__tailwindPendingRefresh && window.tailwind && typeof window.tailwind.refresh === 'function') { window.tailwind.refresh(); window.__tailwindPendingRefresh = false; }"></script>
+        ${globalHeadExtras || ''}
         <style>
           body { font-family: sans-serif; margin: 0; background: white; overflow-x: hidden; min-height: 100vh; }
           .section-container { position: relative; width: 100%; transition: outline 0.1s; cursor: pointer; }
@@ -153,9 +160,10 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
           * { -webkit-user-modify: read-write-plaintext-only; }
           [contenteditable="false"], [contenteditable="false"] * { -webkit-user-modify: read-only; }
         </style>
-      </head>
+        </head>
       <body>
         <div id="root-canvas">${initialHtml}</div>
+        ${chatWidgetHtml || ''}
         <script>
           const root = document.getElementById('root-canvas');
           let lastReceivedHtml = root.innerHTML;
@@ -693,6 +701,14 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
             )}
             {isSimulatingHeatmap ? 'Simulando...' : 'Simular Heatmap'}
           </button>
+          {onGenerateFooter && (
+            <button
+              onClick={onGenerateFooter}
+              className="px-4 py-1 text-[10px] font-black uppercase rounded-lg border border-primary bg-primary/10 text-primary hover:bg-primary/20 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            >
+              Gerar rodapé (CRO)
+            </button>
+          )}
           <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 rounded-lg border border-emerald-100">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
             <span className="text-[9px] font-black text-emerald-600 uppercase">Editor Visual Ativo</span>

@@ -106,3 +106,17 @@ O LandingBuilder AI já gera funis completos a partir de dados de expert e produ
 * **Transparência:** sempre exibir qual provider (Gemini/OpenRouter) produziu o conteúdo e se houve fallback ou regeneração.  
 * **Re-usabilidade:** templates gerados pela Builder devem poder voltar ao pool de ofertas para acelerar novas campanhas.  
 * **Próximos investimentos:** Heatmaps AI, exportação de e-books, CRM webhooks e versionamento também podem ser alinhados com a nova arquitetura.
+
+## Geração guiada por funil e objetivo
+- Toda geração de criativos (IA ou manual) deve partir do funil/objetivo aprovado no painel de configuração e no Planner. Ao acionar “Gerar Plano” ou “Adicionar copy/prompt”, o sistema transmite `funnel`, `objective`, `angles`, `copy` e o estado atual do módulo (stage ativo, métricas, ativos, tom e canais) para os serviços de IA.  
+- O botão “Adicionar copy/prompt” oferece hoje um fluxo híbrido: o usuário pode complementar ou pedir uma nova leva de variações que respeitem o stage e o objetivo ativo, e visualizar badges indicando a origem, métricas e afinidade com o funil antes de salvar.  
+- O Builder e o resumo final (Passo 3/Passo 4) só exibem criativos após confirmar que essas variações carregam `stage` + `objective`, garantindo que o kit enviado ao Ads Manager é coerente com a estratégia aprovada.  
+
+## Status atual e documentação de apoio
+Com a implementação concluída temos:
+
+1. **Arsenal completo** – 1 copy hero + 4 variantes com CTA/headline/word-count limitados e 2+ prompts visuais por copy; o painel exibe métricas, permite regenerar e adicionar variações manuais via modal. Veja `DOCS/media-prompt-matrix.md` e `DOCS/custom-creative-modal-plan.md`.  
+2. **Diagnóstico e briefing para a IA** – o prompt reforçado, os checklists de qualidade e o fallback “Gerar variações extras” estão registrados em `DOCS/creative-briefing-for-ia.md` e `DOCS/creative-arsenal-diagnostic-plan.md`.  
+3. **Rastreio e execução** – o Kanban das tarefas restando para completar o arsenal (diagnóstico, prompt, fallback, persistência, métricas) vive em `DOCS/creative-arsenal-kanban.md`.
+
+Esses documentos constituem a base para futuras melhorias (persistência backend, templates, monitoração) e garantem que o módulo de marketing já entrega o arsenal de copies e prompts necessários para testar e escalar campanhas.

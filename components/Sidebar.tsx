@@ -15,6 +15,8 @@ import AnalyticsModule from './sidebar/AnalyticsModule';
 import BookModule from './sidebar/BookModule';
 import VslModule from './sidebar/VslModule';
 import PromptLibraryModule from './sidebar/PromptLibraryModule';
+import UsersModule from './sidebar/UsersModule';
+import { UsersModuleProvider } from './sidebar/UsersModuleContext';
 
 interface SidebarProps {
   module: string;
@@ -31,6 +33,7 @@ interface SidebarProps {
   onAnalyzeProductUrl?: (url: string) => void;
   onGenerate: (options: GenerationOptions) => void;
   onInjectAsset: (type: 'ebook' | 'vsl', asset: any) => void;
+  onGenerateFooter: () => void;
   generationOptions: GenerationOptions;
   setGenerationOptions: (o: GenerationOptions) => void;
   isLoading: boolean;
@@ -145,6 +148,7 @@ const Sidebar: React.FC<SidebarProps> = (props) => {
             onCreatePageVersion={props.onCreatePageVersion}
             onDuplicatePageVersion={props.onDuplicatePageVersion}
             onDeletePageVersion={props.onDeletePageVersion}
+            onGenerateFooter={props.onGenerateFooter}
           />
         );
       case 'studio':
@@ -187,6 +191,8 @@ const Sidebar: React.FC<SidebarProps> = (props) => {
         );
       case 'library':
         return <PromptLibraryModule />;
+      case 'users':
+        return <UsersModule />;
       default:
         return null;
     }

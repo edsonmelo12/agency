@@ -57,6 +57,7 @@ O `GeminiService` usa `import.meta.env`, portanto o servidor (vite) precisa capt
 - `components/PreviewPanel.tsx`: Motor de renderização do Iframe + editor visual (menu contextual de edição).
 - `components/VslPanel.tsx`: Contém a lógica de decodificação de áudio PCM bruto (24kHz Mono).
 - `components/sidebar/AnalyticsModule.tsx`: SEO/pixels com ação “IA Otimizar”.
+- `server/index.ts`: agora expõe a API Prisma/Express com autenticação JWT/bcrypt, CRUD de `users` (com campo `name`), endpoints de projetos/creatives/sync e logging em `persistence_logs`.
 
 ---
 
@@ -98,3 +99,22 @@ Consulte `DOCS/skills.md` para entender as skills utilizadas nos projetos em cad
 - [ ] Evoluir o menu contextual para painel lateral de propriedades (editor avançado).
 - [ ] Implementar histórico de versões de LP + rollback.
 - [ ] Otimizações de performance (cache de IA, lazy-load de imagens).
+- [x] Criar camada local + API remota (Prisma/SQLite/Express) com autenticação e `syncQueue` híbrido.
+
+## 🧭 Execução local e smoke test
+
+1. Instale dependências: `npm install`.
+2. Crie `.env.local` a partir de `.env.example` e defina `VITE_GEMINI_API_KEY`/`VITE_API_KEY`, variáveis OpenRouter e `API_PORT`/`API_HOST` se a porta padrão (4001/5000) estiver ocupada; nunca versionar esse arquivo.
+3. Configure `.env` com `DATABASE_URL=file:./dev.db`, `BCRYPT_SALT_ROUNDS=10`, `JWT_SECRET`, `ACCESS_TOKEN_TTL` e `REFRESH_TOKEN_TTL`.
+4. Gere o banco local + client: `npx prisma migrate dev --name init` e `npx prisma generate`.
+5. Inicie backend + frontend: `npm run dev:all` (ou `npm run server:start` + `npm run dev` em terminais separados).
+6. Valide os endpoints com `curl` ou `./smoke-test.sh` (o registro agora aceita `name`):
+   ```sh
+   curl -s -X POST http://127.0.0.1:5000/api/auth/register \
+     -H "Content-Type: application/json" \
+     -d '{"email":"test@example.com","password":"senha123"}'
+
+   curl -s -H "Authorization: Bearer <token>" http://127.0.0.1:5000/api/projects
+   ```
+7. Use o token retornado para acessar `GET /api/projects`, `POST /api/projects/:id/sync` e `POST /api/projects/:id/creatives`, incluindo `version` e `context` no payload para permitir merge.
+8. Enquanto o cliente sincronizar, mantenha IndexedDB/localStorage como fallback e registre cada operação em `persistence_logs` (string serializada) para auditoria; exportação/importação JSON continuam disponíveis como backup manual.

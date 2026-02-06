@@ -17,6 +17,7 @@ Garantir que a estratégia ativa (selecionada no sidebar ou no card) determine o
 - Criar payload de `strategy` para o gerador de criativos (stage, objective, tags, awarenessLevel). 
 - Solicitar ao serviço 1 copy principal + 3–5 variações secundárias com prompts visuais distintos (prova, urgência, lifestyle), seguindo práticas de Short Form Video e Cross-Platform Retargeting. Cada variação traz: headline, corpo, CTA, visual style, prompt, métrica alvo.
 - Mostrar esse arsenal no Step 2: um painel principal com copy hero e uma seção abaixo (“Variações de teste”) com cards/copy-lists. Botões rápidos para copiar CTA/prompt.
+- Enriquecer o modal “Adicionar copy/prompt” com contexto do funil: exibir stage/objetivo ativo, permitir ajustes manuais e oferecer o botão “Gerar IA com o funil atual”, que chama o endpoint `generateCreativeVariants` (recebe `paidCampaignPlan`, strategy ativa e inputs do painel de configuração, retorna variações tagueadas por stage/objective/awarenessLevel para alimentar o arsenal).  
 
 ### Fase 3 – Orquestrar builder + checklist + exportação
 - Garantir que o Builder (Passo 3) mostra os criativos correspondentes ao stage da estratégia ativa (ex.: se stage=Fundo, os cards Topo/Meio ainda aparecem mas com tag “variação”). Use `creativeIdeas` para mapear e exibir meta/CTA e marcar quais fazem parte do foco atual.

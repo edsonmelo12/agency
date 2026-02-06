@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ProductInfo, Producer } from '../../types';
+import { ProductInfo, Producer, LegalLinks } from '../../types';
 import { Label, Input, TextArea, Card, Button, Toggle, Select } from '../ui/BaseComponents';
 import { getProductsByExpert, saveProduct, deleteProduct } from '../../services/dbService';
 import { analyzeExternalProduct } from '../../services/genaiClient';
@@ -13,6 +13,23 @@ interface Props {
   editData: ProductInfo | null;
   setEditData: (p: ProductInfo | null) => void;
 }
+
+const defaultLegalLinks = {
+  terms: '/termos',
+  privacy: '/privacidade',
+  contact: ''
+};
+
+const formatLegalValue = (value?: string, fallback: string) => (value || fallback).trim() || fallback;
+
+const ensureLegalLinks = (product: ProductInfo): ProductInfo => ({
+  ...product,
+  legalLinks: {
+    terms: formatLegalValue(product.legalLinks?.terms, defaultLegalLinks.terms),
+    privacy: formatLegalValue(product.legalLinks?.privacy, defaultLegalLinks.privacy),
+    contact: formatLegalValue(product.legalLinks?.contact || product.externalUrl, defaultLegalLinks.contact)
+  }
+});
 
 const ProductModule: React.FC<Props> = ({ 
   activeExpert, activeProduct, onSelectProduct, isLoading: isGlobalLoading, editData, setEditData 
@@ -76,10 +93,15 @@ const ProductModule: React.FC<Props> = ({
         },
         orderBump: { active: false, name: '', price: '', description: '' },
         upsell: { active: false, name: '', price: '', description: '' },
+        legalLinks: {
+          terms: data.legalLinks?.terms || '',
+          privacy: data.legalLinks?.privacy || '',
+          contact: data.legalLinks?.contact || ''
+        },
         createdAt: Date.now()
       };
-      setEditData(newProd);
-    } catch (e) {
+      setEditData(ensureLegalLinks(newProd));
+      } catch (e) {
       alert("Erro ao analisar URL.");
     } finally {
       setIsAiFilling(false);
@@ -131,9 +153,20 @@ const ProductModule: React.FC<Props> = ({
     }
   };
 
+  const updateLegalLink = (field: keyof LegalLinks, value: string) => {
+    if (!editData) return;
+    setEditData({
+      ...editData,
+      legalLinks: {
+        ...editData.legalLinks,
+        [field]: value
+      }
+    });
+  };
+
   const handleSave = async () => {
     if (!editData || !activeExpert) return;
-    const finalData = { ...editData, producerId: activeExpert.id };
+    const finalData = ensureLegalLinks({ ...editData, producerId: activeExpert.id });
     await saveProduct(finalData);
     const updatedList = await getProductsByExpert(activeExpert.id);
     setProducts(updatedList);
@@ -143,15 +176,17 @@ const ProductModule: React.FC<Props> = ({
 
   const startNew = () => {
     if (!activeExpert) return;
-    setEditData({
+    setEditData(ensureLegalLinks({
       id: `prod-${Date.now()}`, producerId: activeExpert.id, name: '', description: '', price: '', learningGoals: '',
       imageUrl: '', guaranteeDays: 7, bonusDescription: '',
       uniqueMechanism: '',
       testimonials: [], proofStats: '', scarcityText: '', faq: [],
       isExternal: false, externalUrl: '', persona: { niche: '', ageRange: '', gender: 'Ambos', audience: '', pains: '', desires: '', objections: '' },
       orderBump: { active: false, name: '', price: '', description: '' },
-      upsell: { active: false, name: '', price: '', description: '' }, createdAt: Date.now()
-    });
+      upsell: { active: false, name: '', price: '', description: '' },
+      legalLinks: { terms: '/termos', privacy: '/privacidade', contact: '' },
+      createdAt: Date.now()
+    }));
   };
 
   if (!activeExpert) return <div className="text-center py-20 opacity-40 uppercase text-[10px] font-black">Selecione um Expert primeiro.</div>;
@@ -255,6 +290,35 @@ const ProductModule: React.FC<Props> = ({
                   <Toggle checked={editData.isExternal} onChange={val => setEditData({...editData, isExternal: val})} />
                </div>
                {editData.isExternal && <Input value={editData.externalUrl} onChange={e => setEditData({...editData, externalUrl: e.target.value})} placeholder="https://pay.hotmart.com/..." />}
+            </Card>
+            <Card color="amber">
+               <Label color="amber">Links Legais</Label>
+               <div className="space-y-3">
+                  <div className="space-y-1">
+                     <span className="text-[9px] font-black text-slate uppercase tracking-widest">Termos de Compromisso</span>
+                     <Input
+                       value={editData.legalLinks?.terms || ''}
+                       onChange={e => updateLegalLink('terms', e.target.value)}
+                       placeholder="https://seudominio.com/termos"
+                     />
+                  </div>
+                  <div className="space-y-1">
+                     <span className="text-[9px] font-black text-slate uppercase tracking-widest">Política de Privacidade</span>
+                     <Input
+                       value={editData.legalLinks?.privacy || ''}
+                       onChange={e => updateLegalLink('privacy', e.target.value)}
+                       placeholder="https://seudominio.com/privacidade"
+                     />
+                  </div>
+                  <div className="space-y-1">
+                     <span className="text-[9px] font-black text-slate uppercase tracking-widest">Link de Contato</span>
+                     <Input
+                       value={editData.legalLinks?.contact || ''}
+                       onChange={e => updateLegalLink('contact', e.target.value)}
+                       placeholder="https://wa.me/55..."
+                     />
+                  </div>
+               </div>
             </Card>
           </div>
         )}
@@ -403,7 +467,7 @@ const ProductModule: React.FC<Props> = ({
                   </div>
                </div>
                <div className="absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={(e) => { e.stopPropagation(); setEditData(prod); }} className="p-2 bg-white dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl text-slate hover:text-primary shadow-sm">
+                  <button onClick={(e) => { e.stopPropagation(); setEditData(ensureLegalLinks(prod)); }} className="p-2 bg-white dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl text-slate hover:text-primary shadow-sm">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                   </button>
                   <button onClick={(e) => { e.stopPropagation(); if(confirm('Excluir oferta?')) deleteProduct(prod.id).then(() => getProductsByExpert(activeExpert.id).then(setProducts)); }} className="p-2 bg-white dark:bg-slate-800 border border-border dark:border-slate-700 rounded-xl text-rose-400 hover:text-rose-600 shadow-sm">

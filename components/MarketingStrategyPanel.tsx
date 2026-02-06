@@ -5,6 +5,7 @@ import { PaidCampaignPlan } from '../types';
 interface Props {
   plan: PaidCampaignPlan | null;
   onSavePlan?: () => void;
+  creativeHighlights?: string[];
 }
 
 const SectionCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
@@ -14,7 +15,7 @@ const SectionCard: React.FC<{ title: string; children: React.ReactNode }> = ({ t
   </div>
 );
 
-const MarketingStrategyPanel: React.FC<Props> = ({ plan, onSavePlan }) => {
+const MarketingStrategyPanel: React.FC<Props> = ({ plan, onSavePlan, creativeHighlights }) => {
   if (!plan) {
     return (
     <div className="h-full flex items-center justify-center text-slate text-sm">
@@ -44,6 +45,19 @@ const MarketingStrategyPanel: React.FC<Props> = ({ plan, onSavePlan }) => {
         <h2 className="text-3xl md:text-4xl font-display text-ink mb-4">Estratégia de Marketing Patrocinado</h2>
         <p className="text-slate max-w-3xl">{plan.summary}</p>
       </div>
+
+      {creativeHighlights && creativeHighlights.length > 0 && (
+        <SectionCard title="Kit de testes em execução">
+          <ul className="space-y-2 text-sm text-ink">
+            {creativeHighlights.map((highlight, idx) => (
+              <li key={`highlight-${idx}`} className="flex items-start gap-2">
+                <span className="mt-1 h-2 w-2 rounded-full bg-primary"></span>
+                <span>{highlight}</span>
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      )}
 
       <SectionCard title="Estrutura do Funil">
         <div className="grid gap-4 md:grid-cols-3">

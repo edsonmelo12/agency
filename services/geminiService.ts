@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { PageType } from "../types.ts";
-import type { GenerationOptions, Section, Producer, ProductInfo, StrategySuggestion, ImageAspectRatio, VisualStyle, Ebook, EbookChapter, VslScript, SeoSettings, AssetPreset, ImageExportFormat, EbookConfig, PaidCampaignInput, PaidCampaignPlan, AiPlanResult, ImageFallbackReason } from "../types.ts";
+import type { GenerationOptions, Section, Producer, ProductInfo, StrategySuggestion, ImageAspectRatio, VisualStyle, Ebook, EbookChapter, VslScript, SeoSettings, AssetPreset, ImageExportFormat, EbookConfig, PaidCampaignInput, PaidCampaignPlan, AiPlanResult, ImageFallbackReason, FunnelStage } from "../types.ts";
 
 export interface ApiKeyLeakDetail {
   message: string;
@@ -354,6 +354,7 @@ const getSectionObjective = (sectionId: string) => {
   if (key === 'proof') return 'Objetivo: validar com prova social.';
   if (key === 'offer') return 'Objetivo: converter com oferta clara e CTA.';
   if (key === 'faq') return 'Objetivo: remover objeções.';
+  if (key === 'footer') return 'Objetivo: encerrar com credibilidade, links úteis e contato direto.';
   return 'Objetivo: comunicar valor com clareza.';
 };
 
@@ -365,14 +366,111 @@ const getSectionLayoutRule = (sectionId: string) => {
   if (key === 'author') {
     return 'Layout: siga o layout fixo do autor com duas colunas.';
   }
+  if (key === 'footer') {
+    return 'Layout: grade responsiva com blocos de colunas, separadores sutis e CTA final. Priorize alinhamento em colunas flexíveis e mantenha padding generoso.';
+  }
   return 'Layout: conteúdo direto no fundo da seção (sem card centralizado). Evite wrapper com bg/rounded/shadow e max-w.';
 };
+
+const escapeRegExp = (value: string) => {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
+const addAttributesToHref = (html: string, url: string, attributes: string) => {
+  if (!url) return html;
+  const escapedUrl = escapeRegExp(url);
+  const regex = new RegExp(`href=(['"])${escapedUrl}\\1([^>]*)>`, 'gi');
+  return html.replace(regex, (match, quote, rest) => {
+    if (/target\s*=/i.test(rest)) return match;
+    return `href=${quote}${url}${quote}${rest} ${attributes}>`;
+  });
+};
+
+const isOptionalExternalLink = (url: string) => /^(https?:|mailto:|tel:)/i.test(url);
 
 const limitWords = (text: string, maxWords: number) => {
   if (!text) return text;
   const words = text.trim().split(/\s+/);
   if (words.length <= maxWords) return text.trim();
   return words.slice(0, maxWords).join(' ') + '...';
+};
+
+const stageVisualFocus: Record<FunnelStage, { badge: string; description: string }> = {
+  Topo: {
+    badge: 'Educação',
+    description: 'Cenário editorial, curiosidade e storytelling.'
+  },
+  Meio: {
+    badge: 'Autoridade',
+    description: 'Provas, depoimentos e atmosferas de estúdio.'
+  },
+  Fundo: {
+    badge: 'Conversão',
+    description: 'Close-up clean com selo de garantia e CTA.'
+  }
+};
+
+const createVisualPrompts = (stage: FunnelStage, productName: string, quality: string, cta: string) => {
+  const focus = stageVisualFocus[stage] || stageVisualFocus.Fundo;
+  const prompts = [
+    `${focus.badge}: ${focus.description} ${productName} em destaque, luz suave, fundo desfocado de ateliê. Adicione badge "${cta}" e selo de garantia com tipografia clean (qualidade ${quality}).`,
+    `Close-up editorial do ${productName} em mãos de artesã, textura detalhada, destaque no acabamento e sobreposição com CTA "${cta}". Cenário studio, iluminação dramática e fundo neutro para focalizar o produto.`
+  ];
+  if (stage === 'Topo') {
+    prompts.push(`Lifestyle: ${productName} em cenário inspirador, mãos trabalhando com lã, luz natural dourada e legenda pequena com curiosidade/pergunta.`);
+  } else if (stage === 'Meio') {
+    prompts.push(`Comparação: ${productName} próximo a certificados e trophies, quadro com cifras de resultados e selo "Sara 5 anos" ao fundo.`);
+  } else {
+    prompts.push(`Urgência: ${productName} com texto de oferta em overlay, etiqueta "R$ ${cta || '30,00'}" e selo "Disponível agora".`);
+  }
+  return prompts;
+};
+
+const mapAngleToStage = (angle: string): FunnelStage => {
+  const normalized = (angle || '').toLowerCase();
+  if (normalized.includes('engaj') || normalized.includes('awareness')) return 'Topo';
+  if (normalized.includes('autoridade') || normalized.includes('authority')) return 'Meio';
+  return 'Fundo';
+};
+
+const normalizeCreativeOutput = (items: any[], fallback: any, productName: string, quality: string = 'Standard'): any[] => {
+  const desired = 5;
+  const filtered = Array.isArray(items) ? items.filter(Boolean) : [];
+  const result = filtered.slice(0, desired);
+  while (result.length < desired) {
+    const base = result[result.length - 1] || fallback;
+    const clone = {
+      ...base,
+      type: 'variant',
+      adCopy: `${base.adCopy || fallback.adCopy || ''}`.trim(),
+      angle: base.angle || fallback.angle || 'conversao',
+      headline: base.headline || fallback.headline,
+      cta: base.cta || fallback.cta,
+      imagePrompt: base.imagePrompt || fallback.imagePrompt,
+      visualStyle: base.visualStyle || fallback.visualStyle
+    };
+    result.push(clone);
+  }
+  return result.map((item, index) => {
+    const copy = limitWords(item.adCopy || fallback.adCopy || '', 70);
+    const stage = mapAngleToStage(item.angle || fallback.angle || 'conversao');
+    const prompts = (item.visualPrompts && item.visualPrompts.length)
+      ? item.visualPrompts
+      : createVisualPrompts(stage, productName, quality, item.cta || fallback.cta || 'Garantia');
+    return {
+      type: item.type || (index === 0 ? 'hero' : 'variant'),
+      angle: item.angle || fallback.angle || 'conversao',
+      headline: item.headline || fallback.headline || '',
+      adCopy: copy,
+      cta: item.cta || fallback.cta || '',
+      imagePrompt: item.imagePrompt || fallback.imagePrompt || prompts[0] || '',
+      visualStyle: item.visualStyle || fallback.visualStyle || '',
+      stage,
+      variant: index === 0 ? 0 : index,
+      wordCount: copy ? copy.trim().split(/\s+/).filter(Boolean).length : 0,
+      visualPrompts: prompts
+    };
+  });
 };
 
 const stripCardWrapper = (html: string) => {
@@ -1177,6 +1275,9 @@ Use Tailwind CSS e mantenha legibilidade, contraste e hierarquia.`;
     if (/(autor|especialista|sobre\s*o?\s*autor|bio|biografia|about)/i.test(lowered)) {
       return 'author';
     }
+    if (/(rod[áa]p[eé]|rodape|footer)/i.test(lowered)) {
+      return 'footer';
+    }
     return lowered;
   };
   const type = normalizeSectionType(sectionType);
@@ -1190,6 +1291,51 @@ Use Tailwind CSS e mantenha legibilidade, contraste e hierarquia.`;
   if (type === 'author' && options.authorLayoutMode === 'free') {
     layoutContext = 'Layout: liberdade criativa para o autor; mantenha foto, nome, bio e bullets com boa hierarquia.';
   }
+  const legalDefaults = {
+    terms: '/termos',
+    privacy: '/privacidade',
+    contact: product.externalUrl || '#contato'
+  };
+  const sourceLegalLinks = product.legalLinks || {};
+  const resolvedLegalLinks = {
+    terms: (sourceLegalLinks.terms || legalDefaults.terms).trim() || legalDefaults.terms,
+    privacy: (sourceLegalLinks.privacy || legalDefaults.privacy).trim() || legalDefaults.privacy,
+    contact: (sourceLegalLinks.contact || legalDefaults.contact).trim() || legalDefaults.contact
+  };
+
+  const authorLabel = expert?.name ? `Sobre ${expert.name}` : 'Sobre o especialista';
+  const footerNavLinks = [
+    { label: authorLabel, href: '#section-author' },
+    { label: 'Benefícios', href: '#section-benefits' },
+    { label: 'Provas', href: '#section-proof' },
+    { label: 'Oferta', href: '#section-offer' },
+    { label: 'FAQ', href: '#section-faq' }
+  ];
+  const ensureFooterNavigation = (content: string) => {
+    const hasAllAnchors = footerNavLinks.every((link) => content.includes(link.href));
+    if (hasAllAnchors) return content;
+    const navItems = footerNavLinks
+      .map(
+        (link) =>
+          `<a href="${link.href}" class="text-sm font-semibold text-slate-700 hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">${link.label}</a>`
+      )
+      .join('');
+    const navBlock = `
+      <div class="mt-8 border-t border-slate-200 pt-6">
+        <p class="text-[10px] font-black uppercase tracking-[0.5em] text-slate-500 mb-2">Navegação</p>
+        <div class="flex flex-wrap gap-4">${navItems}</div>
+      </div>
+    `;
+    return `${content}\n${navBlock}`;
+  };
+  const ensureLegalLinkTargets = (content: string) => {
+    let updated = addAttributesToHref(content, resolvedLegalLinks.terms, 'target="_blank" rel="noreferrer"');
+    updated = addAttributesToHref(updated, resolvedLegalLinks.privacy, 'target="_blank" rel="noreferrer"');
+    if (isOptionalExternalLink(resolvedLegalLinks.contact)) {
+      updated = addAttributesToHref(updated, resolvedLegalLinks.contact, 'target="_blank" rel="noreferrer"');
+    }
+    return updated;
+  };
 
   const authorPrompt =
     options.authorLayoutMode === 'free'
@@ -1252,6 +1398,12 @@ Use mini avatar/ícone apenas.`
       prompt: `Crie oferta com preço, CTA e garantia.
 Inclua lista do que o aluno recebe.`
     },
+    footer: {
+      title: 'Rodapé',
+      bg: themeBase.sectionAlt,
+      padding: 'py-12',
+      prompt: `Crie rodapé completo com 5 blocos claros: 1) branding com __EXPERT_LOGO__ ou nome e tagline curta, 2) mini-navegação com âncoras internas elegantes (Sobre a Sara, Benefícios, Provas, Oferta, FAQ) com efeito de hover e smooth scroll, 3) coluna de links úteis (Suporte, Certificações, Guia), 4) bloco legal com Política de Privacidade, Termos de Compromisso e copyright, e 5) contatos & CTA secundário ("Fale com um especialista", WhatsApp, e-mail) junto a selos de garantia. Faça os links sociais em SVGs, evite emojis e mantenha divisores sutis. Garanta texto corpo >=16px, contraste 4.5:1, alvos de toque >=44px e foco visível.`
+    },
     faq: {
       title: 'FAQ',
       bg: themeBase.section,
@@ -1262,11 +1414,13 @@ Inclua lista do que o aluno recebe.`
 
   const config = prompts[type] || prompts.benefits;
 
-  const authorRule = type === 'author'
+  const sectionRule = type === 'author'
     ? options.authorLayoutMode === 'free'
       ? 'Regra: Seção AUTOR livre. Inclua foto (__EXPERT_PHOTO__), nome, mini-bio e 3 bullets de credenciais. Pode variar layout mantendo legibilidade. Não misture depoimentos nem oferta.'
       : 'Regra: Use __EXPERT_PHOTO__ e __EXPERT_LOGO__ apenas aqui. Não misture depoimentos nem oferta.'
-    : 'Regra: Não cite bio do autor, não use __EXPERT_PHOTO__ nem __EXPERT_LOGO__ nesta seção.';
+    : type === 'footer'
+      ? 'Regra: Rodapé com branding, links úteis, legal e CTA leve. Evite fotos grandes e foco em detalhes de oferta. Mantenha hierarquia clara e blocos delimitados.'
+      : 'Regra: Não cite bio do autor, não use __EXPERT_PHOTO__ nem __EXPERT_LOGO__ nesta seção.';
 
   const mode = options.regenMode || 'full';
   const modeRule = mode === 'copy'
@@ -1276,13 +1430,18 @@ Inclua lista do que o aluno recebe.`
       : mode === 'style'
         ? 'Modo ESTILO: preserve texto e estrutura; ajuste apenas classes para harmonizar com o tema atual.'
         : 'Modo COMPLETO: reescreva texto e layout respeitando o tema.';
+  const footerDirective = type === 'footer'
+    ? 'Diretriz adicional: não reproduza cards de benefícios, hero ou prova. Gere exclusivamente blocos de rodapé (logo, links, seção legal, contato/CTA), com o mesmo visual e estrutura. Use colunas com espaçamentos regulares e evite cards largos.'
+    : '';
+  const legalInstructions = `Links legais obrigatórios (Termos de Compromisso e Política de Privacidade) devem usar __TERMS_URL__ e __PRIVACY_URL__ e abrir em nova aba (target="_blank" rel="noreferrer"). Inclua também um link de contato usando __CONTACT_URL__.`;
 
   const contents = `Produto: ${product.name}. Promessa: ${product.description}. Preço: ${product.price}.
 Expert: ${expert.name}. Autoridade: ${expert.authority || 'Não informado'}.
 ${themePreset}
 Seção: ${config.title}.
 ${config.prompt}
-${authorRule}
+${footerDirective}
+${sectionRule}
 ${designSystemContext}
 ${freedomContext}
 ${briefContext}
@@ -1290,6 +1449,7 @@ ${objectiveContext}
 ${layoutContext}
 ESCOPO: Reescreva apenas esta seção. Ignore qualquer pedido de criar outras seções.
 ${modeRule}
+${legalInstructions}
 HTML atual (referência para preservar quando necessário):
 ${currentHtml}
 Use __CHECKOUT_URL__ para CTA quando fizer sentido.`;
@@ -1321,6 +1481,9 @@ Use __CHECKOUT_URL__ para CTA quando fizer sentido.`;
   if (type === 'author') {
     inner = ensureAuthorLayout(inner);
   }
+  if (type === 'footer') {
+    inner = ensureFooterNavigation(inner);
+  }
   if (type === 'hero' && !/__PRODUCT_IMAGE__/i.test(inner)) {
     inner = `
       <div class="grid gap-10 lg:grid-cols-2 items-center">
@@ -1328,12 +1491,17 @@ Use __CHECKOUT_URL__ para CTA quando fizer sentido.`;
         <div class="flex justify-center lg:justify-end">
           <img src="__PRODUCT_IMAGE__" alt="Imagem do produto" class="w-full max-w-md rounded-2xl shadow-2xl"/>
         </div>
-      </div>
-    `;
+    </div>
+   `;
   }
+  inner = inner
+    .replace(/__TERMS_URL__/g, resolvedLegalLinks.terms)
+    .replace(/__PRIVACY_URL__/g, resolvedLegalLinks.privacy)
+    .replace(/__CONTACT_URL__/g, resolvedLegalLinks.contact);
+  inner = ensureLegalLinkTargets(inner);
 
   const wrapped = `
-    <section class="lb-section ${config.bg} ${config.padding}">
+    <section id="section-${type}" class="lb-section ${config.bg} ${config.padding}">
       <div class="${container}">
         ${inner}
       </div>
@@ -1845,13 +2013,22 @@ export const generateCreativeCampaign = async (
   Headline sugerido: ${strategy.creative.headline}. CTA: ${strategy.creative.cta}.
   `
     : '';
-  const contents = `Crie 3 anúncios para este funil. Produto: ${product.name}. Tom: ${expert.tone}.
-  Variação 1 (Engajamento): conteúdo educativo e valor, sem preço. Use o mecanismo único para gerar curiosidade.
-  Variação 2 (Autoridade): destaque provas concretas e resultados com credibilidade.
-  Variação 3 (Conversão): destaque oferta e ancoragem de preço com CTA direto.
-  RETORNO: para cada anúncio, preencha o campo "angle" com um destes valores: "engajamento" | "autoridade" | "conversao".
-  Use linguagem clara, específica e orientada a benefício. Evite jargões e frases genéricas.
-  Estrutura recomendada: Gancho -> Benefício -> Prova -> CTA.
+  const fallbackCreative = {
+    type: 'hero',
+    angle: 'conversao',
+    headline: product.description || `Campanha ${product.name}`,
+    adCopy: product.description || `${product.name} pronto para conversão.`,
+    cta: product.price ? `Garantia R$ ${product.price}` : 'Saiba mais agora',
+    imagePrompt: `Close-up editorial do ${product.name} com selo de garantia e ilustração do produto em fundo clean.`,
+    visualStyle: 'Product Commercial'
+  };
+  const contents = `Crie 5 anúncios para este funil. Produto: ${product.name}. Tom: ${expert.tone}.
+- Retorno: exatamente 1 copy hero + 4 variações adicionais numeradas (Teste #1, Teste #2, etc.).
+- Para cada variação informe: angle, headline, corpo, CTA, prompt visual e estilo.
+- Limite máximo: 70 palavras por corpo do anúncio, incluindo CTA. Se for necessário, resuma mantendo a mensagem completa.
+- Estrutura recomendada: Gancho -> Benefício -> Prova -> CTA. Evite frases genéricas.
+- Angles sugeridos: "engajamento", "autoridade", "conversao" e variações com foco em benefício.
+- Destaque se é "hero" (foco prioritário para o stage ativo) ou variação de teste.
   Expert: ${expert.name}. Autoridade: ${expert.authority || 'Não informado'}.
   Oferta: ${product.description}. Preço: ${product.price}. Garantia: ${product.guaranteeDays || 7} dias. Bônus: ${product.bonusDescription || 'Não informado'}.
   ${mechanismText} ${anchorText} ${proofText} ${strategyText}`.trim();
@@ -1864,13 +2041,15 @@ export const generateCreativeCampaign = async (
         properties: {
           type: { type: Type.STRING },
           angle: { type: Type.STRING },
+          headline: { type: Type.STRING },
           adCopy: { type: Type.STRING },
+          cta: { type: Type.STRING },
           imagePrompt: { type: Type.STRING },
           visualStyle: { type: Type.STRING }
         },
-        required: ["type", "angle", "adCopy", "imagePrompt", "visualStyle"]
+        required: ["type", "angle", "headline", "adCopy", "cta", "imagePrompt", "visualStyle"]
       }
-    }
+    },
   };
   const models = ['gemini-3-flash-preview', 'gemini-3-pro-preview'];
   let lastError: any;
@@ -1882,7 +2061,121 @@ export const generateCreativeCampaign = async (
         700
       );
       try {
-        return JSON.parse(cleanJsonResponse(response.text));
+        const parsed = JSON.parse(cleanJsonResponse(response.text));
+        return normalizeCreativeOutput(parsed, fallbackCreative, product.name || 'produto', 'Standard');
+      } catch (parseErr: any) {
+        throw new Error(`Falha ao interpretar resposta do modelo (${model}). Tente novamente.`);
+      }
+    } catch (err) {
+      lastError = err;
+      if (!isRetryableError(err)) break;
+    }
+  }
+  throw lastError;
+};
+
+export const generateCreativeVariants = async (
+  plan: PaidCampaignPlan,
+  strategy: StrategySuggestion | null,
+  input: PaidCampaignInput | null,
+  expert: Producer,
+  product: ProductInfo
+): Promise<any[]> => {
+  const ai = createGenAiClient();
+  const persona = product.persona;
+  const funnelText = `Top: ${plan.funnel.top}; Meio: ${plan.funnel.middle}; Fundo: ${plan.funnel.bottom}.`;
+  const angles = plan.angles.length ? plan.angles.join(', ') : 'Não informado';
+  const planObjective = plan.copy?.headline || plan.summary || 'Objetivo não especificado';
+  const strategyText = strategy
+    ? `Strategy: ${strategy.title} (${strategy.stage}) • Objective: ${strategy.objective}.`
+    : 'Strategy: não selecionada.';
+  const panelStateText = input
+    ? `Painel: Objetivo=${input.objective}, Ticket=${input.ticket}, Canal=${input.channel}, Tom=${input.tone}, Métrica=${input.primaryMetric ||
+        'CPA'}, Segmento=${input.segment || 'não informado'}, Dor=${input.pain || 'não informado'}, Mecanismo=${input.mechanism ||
+        'não informado'}, Promessa=${input.promise || 'não informada'}.`
+    : 'Painel: contexto de configuração não disponível.';
+  const assetsText = input
+    ? `Ativos disponíveis: PV=${input.assets.hasPv ? 'sim' : 'não'}, Ebook=${input.assets.hasEbook ? 'sim' : 'não'}, Provas=${input.assets.hasProof ? 'sim' : 'não'}.`
+    : '';
+
+  const fallbackCreative = {
+    type: 'hero',
+    angle: 'conversao',
+    headline: plan.copy?.headline || product.description || 'Hero asset',
+    adCopy: plan.summary || product.description || `${product.name} pronto para disparar.`,
+    cta: plan.copy?.cta || 'Garanta agora',
+    imagePrompt: `Close-up editorial do ${product.name} com CTA ${plan.copy?.cta || 'Garantia'}.`,
+    visualStyle: 'Product Commercial'
+  };
+
+  const contents = `
+Você é um estrategista de marketing pago com acesso ao funil e ao objetivo definidos pelo painel de configuração.
+Plano: ${planObjective}
+Funil: ${funnelText}
+Ângulos: ${angles}
+Copy hero: ${plan.copy?.headline || 'Sem headline definido'} | CTA: ${plan.copy?.cta || 'Sem CTA'}.
+Segmentos: ${plan.angles.join(', ') || 'não informado'}.
+${strategyText}
+${panelStateText}
+${assetsText}
+
+Gere 1 copy hero + 4 variações numeradas para testar (Teste #1, ...).
+Cada variação deve conter: \`type\`, \`stage\`, \`objective\`, \`awarenessLevel\`, \`headline\`, \`adCopy\`, \`cta\`, \`imagePrompt\`, \`visualStyle\` e \`visualPrompts\` (array de 2 strings).
+Retorne um JSON array com esses objetos. Limite de 70 palavras por corpo do anúncio.
+`.trim();
+
+  const config = {
+    responseMimeType: "application/json",
+    responseSchema: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          type: { type: Type.STRING },
+          angle: { type: Type.STRING },
+          stage: { type: Type.STRING },
+          objective: { type: Type.STRING },
+          awarenessLevel: { type: Type.STRING },
+          headline: { type: Type.STRING },
+          adCopy: { type: Type.STRING },
+          cta: { type: Type.STRING },
+          imagePrompt: { type: Type.STRING },
+          visualStyle: { type: Type.STRING },
+          visualPrompts: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING }
+          }
+        },
+        required: ["type", "headline", "adCopy", "cta", "imagePrompt", "visualStyle"]
+      }
+    },
+  };
+
+  const models = ['gemini-3-pro-preview', 'gemini-3-flash-preview'];
+  let lastError: any;
+  for (const model of models) {
+    try {
+      const response = await withRetry(
+        () => ai.models.generateContent({ model, contents, config }),
+        2,
+        700
+      );
+      try {
+        const parsed = JSON.parse(cleanJsonResponse(response.text));
+        const normalized = normalizeCreativeOutput(parsed, fallbackCreative, product.name || 'produto', 'Standard');
+        const activeStage = strategy?.stage || normalized[0]?.stage || 'Fundo';
+        const objectiveLabel = strategy?.objective || planObjective;
+        return normalized.map((item, index) => ({
+          ...item,
+          stage: activeStage,
+          objective: objectiveLabel,
+          awarenessLevel: activeStage,
+          origin: 'ia',
+          variant: index === 0 ? 0 : index,
+          intention: objectiveLabel,
+          format: `${strategy?.stage || activeStage} • ${input?.channel || 'Meta'}`,
+          tags: Array.from(new Set([activeStage, item.angle, strategy?.tags?.[0] || planObjective || 'teste'])).filter(Boolean)
+        }));
       } catch (parseErr: any) {
         throw new Error(`Falha ao interpretar resposta do modelo (${model}). Tente novamente.`);
       }
