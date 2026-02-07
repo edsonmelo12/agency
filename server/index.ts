@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './env.ts';
 import cors from 'cors';
 import express from 'express';
 import { JSDOM } from 'jsdom';

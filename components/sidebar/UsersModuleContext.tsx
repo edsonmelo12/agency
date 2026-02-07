@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { readAuthToken } from '../../services/authStorage';
 
-type UserRow = {
+export type UserRow = {
   id: string;
   email: string;
   name: string;
@@ -55,6 +55,7 @@ interface UsersModuleContextValue {
   handleLogout: () => void;
   updateFormField: (update: Partial<FormState>) => void;
   setTokenDirectly: (value: string | null) => void;
+  clearMessages: () => void;
 }
 
 const UsersModuleContext = createContext<UsersModuleContextValue | undefined>(undefined);
@@ -130,6 +131,15 @@ export const UsersModuleProvider: React.FC<{ uiTheme: 'light' | 'dark'; children
     }
   }, [token]);
 
+  useEffect(() => {
+    const handleAuthChange = () => {
+      const nextToken = readAuthToken();
+      setToken(nextToken);
+    };
+    window.addEventListener('lb-auth-change', handleAuthChange);
+    return () => window.removeEventListener('lb-auth-change', handleAuthChange);
+  }, []);
+
   const handleFormSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!token) {
@@ -168,7 +178,6 @@ export const UsersModuleProvider: React.FC<{ uiTheme: 'light' | 'dark'; children
 
   const handleDelete = async (id: string) => {
     if (!token) return;
-    if (!window.confirm('Tem certeza que deseja remover este usuário?')) return;
     setFormLoading(true);
     setErrorMessage(null);
     setStatusMessage(null);
@@ -207,6 +216,11 @@ export const UsersModuleProvider: React.FC<{ uiTheme: 'light' | 'dark'; children
     setFormState(prev => ({ ...prev, ...updates }));
   };
 
+  const clearMessages = () => {
+    setErrorMessage(null);
+    setStatusMessage(null);
+  };
+
   const value: UsersModuleContextValue = {
     token,
     account,
@@ -225,6 +239,7 @@ export const UsersModuleProvider: React.FC<{ uiTheme: 'light' | 'dark'; children
     handleLogout,
     updateFormField,
     setTokenDirectly: setSession,
+    clearMessages,
   };
 
   return <UsersModuleContext.Provider value={value}>{children}</UsersModuleContext.Provider>;

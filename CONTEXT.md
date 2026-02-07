@@ -107,7 +107,7 @@ Consulte `DOCS/skills.md` para entender as skills utilizadas nos projetos em cad
 2. Crie `.env.local` a partir de `.env.example` e defina `VITE_GEMINI_API_KEY`/`VITE_API_KEY`, variáveis OpenRouter e `API_PORT`/`API_HOST` se a porta padrão (4001/5000) estiver ocupada; nunca versionar esse arquivo.
 3. Configure `.env` com `DATABASE_URL=file:./dev.db`, `BCRYPT_SALT_ROUNDS=10`, `JWT_SECRET`, `ACCESS_TOKEN_TTL` e `REFRESH_TOKEN_TTL`.
 4. Gere o banco local + client: `npx prisma migrate dev --name init` e `npx prisma generate`.
-5. Inicie backend + frontend: `npm run dev:all` (ou `npm run server:start` + `npm run dev` em terminais separados).
+5. Inicie backend + frontend: `npm run dev:all` (ou `npm run server:start` + `npm run dev` em terminais separados). O componente `UsersWorkspace` agora substitui o antigo card lateral, exibindo um painel tabular responsivo dentro do layout principal e mantendo o modal `AuthGate` fora do provedor para que possa se sobrepor à aplicação quando um token ainda não foi obtido.
 6. Valide os endpoints com `curl` ou `./smoke-test.sh` (o registro agora aceita `name`):
    ```sh
    curl -s -X POST http://127.0.0.1:5000/api/auth/register \

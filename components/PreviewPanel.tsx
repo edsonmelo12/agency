@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Section, ActiveElement, StudioImage } from '../types';
+import { AuthUser } from '../services/authStorage';
 import { simulateHeatmap, rewriteElementText } from '../services/genaiClient';
 import HeatmapOverlay from './HeatmapOverlay';
 import { Input } from './ui/BaseComponents';
@@ -20,6 +21,9 @@ interface PreviewPanelProps {
   onGenerateFooter?: () => void;
   chatWidgetHtml?: string;
   globalHeadExtras?: string;
+  authUser?: AuthUser | null;
+  authStatus?: string | null;
+  onLogout?: () => void;
 }
 
 const PreviewPanel: React.FC<PreviewPanelProps> = ({
@@ -36,6 +40,9 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
   onGenerateFooter,
   chatWidgetHtml,
   globalHeadExtras,
+  authUser,
+  authStatus,
+  onLogout,
 }) => {
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop');
   const [isIframeReady, setIsIframeReady] = useState(false);
@@ -51,6 +58,8 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
+  const sessionMenuRef = useRef<HTMLDivElement>(null);
+  const [isSessionMenuOpen, setIsSessionMenuOpen] = useState(false);
 
   const removeInvalidSvgPaths = (html: string) => {
     return html.replace(/<path\b[^>]*\sd=(["'])(?![Mm])[^"']*\1[^>]*>(?:<\/path>)?/gi, '');
@@ -107,6 +116,17 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
       setTextTab('text');
     }
   }, [activeElement?.tagName]);
+
+  useEffect(() => {
+    const handleOutside = (event: MouseEvent) => {
+      if (sessionMenuRef.current && !sessionMenuRef.current.contains(event.target as Node)) {
+        setIsSessionMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, []);
+
 
   const initialHtml = currentSections.map(s => `
     <div id="${s.id}" class="section-container ${selectedSectionId === s.id ? 'active' : ''}" data-section-type="${s.type?.toLowerCase() || ''}">
@@ -681,11 +701,11 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
           <button onClick={() => setViewMode('desktop')} className={`px-4 py-1 text-[10px] font-black uppercase rounded-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${viewMode === 'desktop' ? 'bg-white shadow-sm text-primary' : 'text-slate'}`}>Desktop</button>
           <button onClick={() => setViewMode('mobile')} className={`px-4 py-1 text-[10px] font-black uppercase rounded-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${viewMode === 'mobile' ? 'bg-white shadow-sm text-primary' : 'text-slate'}`}>Mobile</button>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={onOpenPreview}
-            className="px-4 py-1 text-[10px] font-black uppercase rounded-lg border transition-all flex items-center gap-2 bg-panel text-primary border-border hover:bg-blue-100"
-          >
+          <div className="flex gap-2 items-center">
+            <button
+              onClick={onOpenPreview}
+              className="px-4 py-1 text-[10px] font-black uppercase rounded-lg border transition-all flex items-center gap-2 bg-panel text-primary border-border hover:bg-blue-100"
+            >
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
             Visualizar
           </button>
@@ -701,17 +721,53 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
             )}
             {isSimulatingHeatmap ? 'Simulando...' : 'Simular Heatmap'}
           </button>
-          {onGenerateFooter && (
-            <button
-              onClick={onGenerateFooter}
-              className="px-4 py-1 text-[10px] font-black uppercase rounded-lg border border-primary bg-primary/10 text-primary hover:bg-primary/20 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-            >
-              Gerar rodapé (CRO)
-            </button>
-          )}
           <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 rounded-lg border border-emerald-100">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
             <span className="text-[9px] font-black text-emerald-600 uppercase">Editor Visual Ativo</span>
+          </div>
+          <div ref={sessionMenuRef} className="relative">
+            <button
+              type="button"
+              onClick={event => {
+                event.preventDefault();
+                event.stopPropagation();
+                setIsSessionMenuOpen(prev => !prev);
+              }}
+              className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-1 text-[10px] font-black uppercase tracking-[0.4em] text-slate-700 shadow-sm transition hover:border-slate-300"
+            >
+              <span className={`h-2 w-2 rounded-full ${authUser ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+              <span>{authUser ? 'Sessão ativa' : 'Sessão pendente'}</span>
+              <span className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-[11px] font-black text-slate-700">
+                {authUser
+                  ? authUser.name
+                      .split(' ')
+                      .map(part => part[0])
+                      .filter(Boolean)
+                      .slice(0, 2)
+                      .join('')
+                      .toUpperCase()
+                  : 'AA'}
+              </span>
+            </button>
+            {isSessionMenuOpen && (
+              <div className="absolute right-0 top-full mt-2 w-72 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-800 shadow-2xl">
+                <p className="text-[9px] font-black uppercase tracking-[0.4em] text-slate-400">Sessão administrativa</p>
+                <p className="mt-2 text-base font-semibold text-slate-900">{authUser?.name || 'Sem usuário'}</p>
+                <p className="text-[11px] text-slate-500">{authUser?.email || authStatus || 'Autentique-se para continuar'}</p>
+                {authUser && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSessionMenuOpen(false);
+                      onLogout?.();
+                    }}
+                    className="mt-4 w-full rounded-2xl border border-rose-200 px-3 py-2 text-[10px] font-black uppercase tracking-[0.4em] text-rose-500 transition hover:bg-rose-50"
+                  >
+                    Logout
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -1,5 +1,6 @@
 
 import React, { useRef, useMemo } from 'react';
+import { AuthUser } from '../services/authStorage';
 import { 
   GenerationOptions, Section, MarketingSettings, SeoSettings, 
   Producer, ProductInfo, VisualStyle, ImageAspectRatio, Ebook, VslScript, ImageExportFormat, EbookConfig, Project, PaidCampaignInput, AiFallbackLog
@@ -87,6 +88,9 @@ interface SidebarProps {
   setMarketing: (m: MarketingSettings) => void;
   seo: SeoSettings;
   setSeo: (s: SeoSettings) => void;
+  authUser: AuthUser | null;
+  authStatus: string | null;
+  onLogout: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = (props) => {
@@ -200,7 +204,7 @@ const Sidebar: React.FC<SidebarProps> = (props) => {
 
   return (
     <div className="w-full md:w-96 border-r border-border flex flex-col overflow-hidden shadow-2xl z-20 transition-all duration-300 bg-panel">
-      <div className="p-6 border-b border-border">
+      <div className="p-6 border-b border-border space-y-4">
         <div className="flex items-center gap-2 mb-1">
            <span className="text-[10px] font-black text-primary uppercase tracking-widest truncate max-w-[120px]">{props.activeExpert?.name || 'Expert'}</span>
            <span className="text-slate-300">/</span>

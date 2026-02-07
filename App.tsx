@@ -358,12 +358,23 @@ const App: React.FC = () => {
       setAuthStatus('Sessão iniciada');
       writeAuthToken(response.accessToken);
       writeAuthUser(response.user);
+      window.dispatchEvent(new Event('lb-auth-change'));
       enterApp();
     } catch (error: any) {
       setAuthError(error.message || 'Falha na autenticação');
     } finally {
       setAuthLoading(false);
     }
+  };
+
+  const handleLogout = () => {
+    clearAuthToken();
+    clearAuthUser();
+    setAuthToken(null);
+    setAuthUser(null);
+    setAuthStatus('Logout realizado');
+    setRoute('landing');
+    window.dispatchEvent(new Event('lb-auth-change'));
   };
 
   useEffect(() => {
@@ -1488,7 +1499,7 @@ const App: React.FC = () => {
               </div>
             </nav>
 
-            <Sidebar 
+              <Sidebar 
               module={activeModule} uiTheme={uiTheme} onModuleChange={setActiveModule}
               activeExpert={activeExpert} onSelectExpert={setActiveExpert}
               activeProduct={activeProduct} onSelectProduct={setActiveProduct}
@@ -1547,94 +1558,105 @@ const App: React.FC = () => {
               }}
               onDeleteEbook={handleDeleteEbook}
               onRegenerateSection={handleRegenerateSection}
+              authUser={authUser}
+              authStatus={authStatus}
+              onLogout={handleLogout}
             />
 
-            <main className="flex-1 relative min-w-0 flex flex-col bg-slate-100 dark:bg-black overflow-hidden h-full">
-        {saveMessage && <div className="absolute top-6 right-6 bg-emerald-600 text-white px-6 py-3 rounded-full shadow-2xl z-[100] animate-in slide-in-from-right-10 text-[10px] font-black uppercase">{saveMessage}</div>}
-        {isLoading && <div className="absolute inset-0 bg-white/60 dark:bg-slate-950/60 backdrop-blur-md flex flex-col items-center justify-center z-[100]"><div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div><p className="text-[10px] font-black uppercase text-slate-500 mt-4 tracking-widest">Estúdio em Operação...</p></div>}
+      <main className="flex-1 relative min-w-0 flex flex-col bg-slate-100 dark:bg-black overflow-hidden h-full">
+        {activeModule === 'users' ? (
+          <UsersWorkspace />
+        ) : (
+          <>
+            {saveMessage && <div className="absolute top-6 right-6 bg-emerald-600 text-white px-6 py-3 rounded-full shadow-2xl z-[100] animate-in slide-in-from-right-10 text-[10px] font-black uppercase">{saveMessage}</div>}
+            {isLoading && <div className="absolute inset-0 bg-white/60 dark:bg-slate-950/60 backdrop-blur-md flex flex-col items-center justify-center z-[100]"><div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div><p className="text-[10px] font-black uppercase text-slate-500 mt-4 tracking-widest">Estúdio em Operação...</p></div>}
 
-        {activeModule === 'studio' && <StudioPanel images={studioImages} uiTheme={uiTheme} onDeleteImage={(id) => deleteStudioImage(id).then(() => getAllStudioImages().then(setStudioImages))} isGenerating={isLoading} />}
-        {activeModule === 'ebook' && <BookPanel ebook={ebooks.find(b => b.id === activeEbookId) || null} uiTheme={uiTheme} onGenerateChapter={async (bid, cid) => {
-           const book = ebooks.find(b => b.id === bid); if (!book || !activeExpert || !activeProduct) return;
-           await checkApiKey();
-           setIsLoading(true);
-           try {
-             const chapterObj = cid === 'intro'
-               ? { title: 'Introdução', exerciseRequired: false }
-               : cid === 'conclusion'
-                 ? { title: 'Conclusão', exerciseRequired: false }
-                 : book.chapters.find(c => c.id === cid)!;
-             const chapterIndex = cid === 'intro' || cid === 'conclusion'
-               ? -1
-               : book.chapters.findIndex(c => c.id === cid);
-             const content = await generateChapterContent(
-               book.title,
-               { ...chapterObj, chapterIndex },
-               activeExpert,
-               activeProduct,
-               book.config
-             );
-             let updatedBook = { ...book };
-             if (cid === 'intro') updatedBook.introduction = content;
-             else if (cid === 'conclusion') updatedBook.conclusion = content;
-             else updatedBook.chapters = book.chapters.map(c => c.id === cid ? { ...c, content, status: 'completed' } : c);
-             await saveEbook(updatedBook); setEbooks(prev => prev.map(b => b.id === bid ? updatedBook : b));
-           } finally { setIsLoading(false); }
-         }} onReviewChapter={handleReviewChapter} onGenerateCover={handleGenerateEbookCover} onUpdateSettings={handleUpdateEbookSettings} onIllustrateChapter={() => {}} />}
-        {activeModule === 'vsl' && <VslPanel script={vslScript} uiTheme={uiTheme} isLoadingAudio={false} setIsLoadingAudio={() => {}} />}
-        {activeModule === 'marketing' && (
-          <MarketingWorkflowPanel
-            plan={marketingPlan}
-            creativeIdeas={creativeIdeas}
-            builderPlan={builderPlan}
-            expert={activeExpert}
-            product={activeProduct}
-            onRefreshCreatives={handleRefreshCreatives}
-            isGeneratingCreatives={isGeneratingCreatives}
-            onSavePlan={() => handleSaveProject()}
-            marketing={marketing}
-            strategySuggestions={STRATEGY_SUGGESTIONS}
-            selectedStrategyId={selectedStrategyId}
-            onSelectStrategy={handleSelectStrategy}
-            onGenerateCreativeVariants={handleGenerateCreativeVariants}
-            customCreatives={customCreatives}
-            onSaveCustomCreative={(creative) => setCustomCreatives(prev => [...prev, creative])}
-          />
-        )}
-        
-        {['strategy', 'product', 'builder', 'analytics', 'library'].includes(activeModule) && (
-          <PreviewPanel
-            sections={sections}
-            variationSections={variationSections}
-            selectedSectionId={selectedSectionId}
-            activeElement={activeElement}
-            studioImages={studioImages}
-            onUpdateSectionContent={handleSectionUpdate}
-            onSelectSection={setSelectedSectionId}
-            onElementSelect={setActiveElement}
-            onRegenerateSection={handleRegenerateSection}
-            onGenerateFooter={handleGenerateFooter}
-            onDownload={() => {}}
-            onOpenPreview={() => {
-              const win = window.open('about:blank', '_blank');
-              if (win) {
-                win.document.write(constructFullHTML());
-                win.document.close();
-              }
-            }}
-            chatWidgetHtml={chatWidgetHtml}
-            globalHeadExtras={globalHeadExtras}
-          />
+            {activeModule === 'studio' && <StudioPanel images={studioImages} uiTheme={uiTheme} onDeleteImage={(id) => deleteStudioImage(id).then(() => getAllStudioImages().then(setStudioImages))} isGenerating={isLoading} />}
+            {activeModule === 'ebook' && <BookPanel ebook={ebooks.find(b => b.id === activeEbookId) || null} uiTheme={uiTheme} onGenerateChapter={async (bid, cid) => {
+               const book = ebooks.find(b => b.id === bid); if (!book || !activeExpert || !activeProduct) return;
+               await checkApiKey();
+               setIsLoading(true);
+               try {
+                 const chapterObj = cid === 'intro'
+                   ? { title: 'Introdução', exerciseRequired: false }
+                   : cid === 'conclusion'
+                     ? { title: 'Conclusão', exerciseRequired: false }
+                     : book.chapters.find(c => c.id === cid)!;
+                 const chapterIndex = cid === 'intro' || cid === 'conclusion'
+                   ? -1
+                   : book.chapters.findIndex(c => c.id === cid);
+                 const content = await generateChapterContent(
+                   book.title,
+                   { ...chapterObj, chapterIndex },
+                   activeExpert,
+                   activeProduct,
+                   book.config
+                 );
+                 let updatedBook = { ...book };
+                 if (cid === 'intro') updatedBook.introduction = content;
+                 else if (cid === 'conclusion') updatedBook.conclusion = content;
+                 else updatedBook.chapters = book.chapters.map(c => c.id === cid ? { ...c, content, status: 'completed' } : c);
+                 await saveEbook(updatedBook); setEbooks(prev => prev.map(b => b.id === bid ? updatedBook : b));
+               } finally { setIsLoading(false); }
+             }} onReviewChapter={handleReviewChapter} onGenerateCover={handleGenerateEbookCover} onUpdateSettings={handleUpdateEbookSettings} onIllustrateChapter={() => {}} />}
+            {activeModule === 'vsl' && <VslPanel script={vslScript} uiTheme={uiTheme} isLoadingAudio={false} setIsLoadingAudio={() => {}} />}
+            {activeModule === 'marketing' && (
+              <MarketingWorkflowPanel
+                plan={marketingPlan}
+                creativeIdeas={creativeIdeas}
+                builderPlan={builderPlan}
+                expert={activeExpert}
+                product={activeProduct}
+                onRefreshCreatives={handleRefreshCreatives}
+                isGeneratingCreatives={isGeneratingCreatives}
+                onSavePlan={() => handleSaveProject()}
+                marketing={marketing}
+                strategySuggestions={STRATEGY_SUGGESTIONS}
+                selectedStrategyId={selectedStrategyId}
+                onSelectStrategy={handleSelectStrategy}
+                onGenerateCreativeVariants={handleGenerateCreativeVariants}
+                customCreatives={customCreatives}
+                onSaveCustomCreative={(creative) => setCustomCreatives(prev => [...prev, creative])}
+              />
+            )}
+
+              {['strategy', 'product', 'builder', 'analytics', 'library'].includes(activeModule) && (
+                <PreviewPanel
+                sections={sections}
+                variationSections={variationSections}
+                selectedSectionId={selectedSectionId}
+                activeElement={activeElement}
+                studioImages={studioImages}
+                onUpdateSectionContent={handleSectionUpdate}
+                onSelectSection={setSelectedSectionId}
+                onElementSelect={setActiveElement}
+                onRegenerateSection={handleRegenerateSection}
+                onGenerateFooter={handleGenerateFooter}
+                onDownload={() => {}}
+                onOpenPreview={() => {
+                  const win = window.open('about:blank', '_blank');
+                  if (win) {
+                    win.document.write(constructFullHTML());
+                    win.document.close();
+                  }
+                }}
+                chatWidgetHtml={chatWidgetHtml}
+                globalHeadExtras={globalHeadExtras}
+                authUser={authUser}
+                authStatus={authStatus}
+                onLogout={handleLogout}
+              />
+            )}
+          </>
         )}
       </main>
-          </div>
-          {activeModule === 'users' && <UsersWorkspace />}
-        </div>
-      </UsersModuleProvider>
-        {route === 'app' && !authToken && (
-          <AuthGate loading={authLoading} error={authError} status={authStatus} onLogin={handleLogin} />
-        )}
+      </div>
     </div>
+  </UsersModuleProvider>
+  {route === 'app' && !authToken && (
+    <AuthGate loading={authLoading} error={authError} status={authStatus} onLogin={handleLogin} />
+  )}
+</div>
   );
 };
 
