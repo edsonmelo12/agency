@@ -12,7 +12,7 @@ import UsersWorkspace from './components/users/UsersWorkspace';
 import { 
   GenerationOptions, Section, ActiveElement, Project, 
   PageType, MarketingSettings, SeoSettings, Producer, ProductInfo, StudioImage, ImageFallbackReason, VisualStyle, ImageAspectRatio, ImageExportFormat,
-  Ebook, VslScript, AssetPreset, EbookConfig, PaidCampaignInput, PaidCampaignPlan, CreativeIdea, BuilderPlan, CampaignSegment, StrategySuggestion, AiFallbackLog, AiPlanResult
+  Ebook, VslScript, AssetPreset, EbookConfig, PaidCampaignInput, PaidCampaignPlan, CreativeIdea, BuilderPlan, CampaignSegment, StrategySuggestion, AiFallbackLog, AiPlanResult, CreativeMode
 } from './types';
 import { generateLandingPage, generateStudioImage, generateBookOutline, generateChapterContent, reviewChapterContent, generateVslScript, refineLandingPageContent, injectAssetIntoPage, generateCreativeCampaign, generateCreativeVariants, generateSeoFromSections, generateMarketingIdeas, generatePaidAdsPlan, generatePaidCampaignStrategy, regenerateSectionWithCRO, hydrateSectionContent, ApiKeyLeakDetail } from './services/genaiClient';
 import { getAllExperts, getProductsByExpert, getProjectsByProduct, saveProject, deleteProject, getAllStudioImages, saveStudioImage, deleteStudioImage, saveEbook, getEbooksByProduct, saveProduct, saveExpert, deleteEbook, saveVslScript, getVslScriptsByProduct, openDB, clearAllData } from './services/dbService';
@@ -907,7 +907,7 @@ const App: React.FC = () => {
       };
       const style = styleMap[theme] || 'Product Commercial';
       const prompt = book.coverPrompt || `Capa editorial moderna para o e-book "${book.title}"`;
-      const { url } = await generateStudioImage(null, prompt, style, '3:4', 'standard', 'image/png', 1, 'Ebook Cover');
+      const { url } = await generateStudioImage(null, prompt, style, '3:4', 'standard', 'image/png', 1, 'Ebook Cover', false, undefined, undefined, 'generic');
       const updated = { ...book, coverImageUrl: url };
       await saveEbook(updated);
       setEbooks(prev => prev.map(b => b.id === bookId ? updated : b));
@@ -952,12 +952,14 @@ const App: React.FC = () => {
   const handleGenerateImageRequest = async (
     b: string | null, p: string, s: VisualStyle, r: ImageAspectRatio, 
     q: 'standard' | 'ultra', f: ImageExportFormat, ql: number, 
-    pr: AssetPreset, strictRef: boolean = false, ac?: string, at?: string
+    pr: AssetPreset, strictRef: boolean = false, ac?: string, at?: string,
+    creativeMode: CreativeMode = 'organic'
   ) => {
     if (q === 'ultra') await checkApiKey();
     setIsLoading(true); 
     try { 
-      let baseImage = b;
+      const shouldUseReference = strictRef && creativeMode === 'organic';
+      let baseImage: string | null = shouldUseReference ? b : null;
       const resizeToDataUrl = (img: HTMLImageElement, maxSize: number, mimeType: string, quality?: number) =>
         new Promise<string>((resolve, reject) => {
           const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
@@ -970,10 +972,10 @@ const App: React.FC = () => {
           const dataUrl = canvas.toDataURL(mimeType, quality);
           resolve(dataUrl);
         });
-      if (strictRef && !baseImage) {
+      if (shouldUseReference && !baseImage) {
         throw new Error("Referência obrigatória no modo estrito.");
       }
-      if (baseImage && !baseImage.startsWith('data:')) {
+      if (shouldUseReference && baseImage && !baseImage.startsWith('data:')) {
         try {
           const response = await fetch(baseImage);
           const blob = await response.blob();
@@ -988,7 +990,7 @@ const App: React.FC = () => {
           baseImage = null;
         }
       }
-      if (baseImage) {
+      if (shouldUseReference && baseImage) {
         try {
           baseImage = await new Promise<string>((resolve, reject) => {
             const img = new Image();
@@ -1013,15 +1015,15 @@ const App: React.FC = () => {
           baseImage = null;
         }
       }
-      if (baseImage && !baseImage.startsWith('data:image/')) {
+      if (shouldUseReference && baseImage && !baseImage.startsWith('data:image/')) {
         console.warn("Referência inválida, gerando sem referência.");
         baseImage = null;
       }
-      if (strictRef && !baseImage) {
+      if (shouldUseReference && strictRef && !baseImage) {
         throw new Error("Referência inválida ou ausente no modo estrito.");
       }
       const attemptGenerate = async (nextBase: string | null, qualityOverride?: 'standard' | 'ultra', promptOverride?: string) =>
-        generateStudioImage(nextBase, promptOverride || p, s, r, qualityOverride || q, f, ql, pr, strictRef, ac, at);
+        generateStudioImage(nextBase, promptOverride || p, s, r, qualityOverride || q, f, ql, pr, strictRef, ac, at, creativeMode);
 
       const loadImage = (src: string) =>
         new Promise<HTMLImageElement>((resolve, reject) => {

@@ -1,4 +1,4 @@
-import { CreativeIdea, GenerationOptions, PaidCampaignInput, PaidCampaignPlan, Producer, ProductInfo, Section, StrategySuggestion, EbookConfig, SeoSettings } from "../types";
+import { CreativeIdea, GenerationOptions, PaidCampaignInput, PaidCampaignPlan, Producer, ProductInfo, Section, StrategySuggestion, EbookConfig, SeoSettings, VisualStyle, ImageAspectRatio, ImageExportFormat, AssetPreset, CreativeMode } from "../types";
 
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined) || "/api/genai";
 
@@ -10,9 +10,17 @@ const callProxy = async (action: string, args: any[]) => {
     },
     body: JSON.stringify({ action, args }),
   });
-  const payload = await response.json();
+  const text = await response.text();
+  let payload: any = {};
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch (err) {
+      payload = { error: text };
+    }
+  }
   if (!response.ok) {
-    throw new Error(payload.error || "Erro ao chamar o proxy de IA");
+    throw new Error(payload.error || `Erro ao chamar o proxy de IA (${response.status})`);
   }
   return payload.result;
 };
@@ -33,8 +41,21 @@ export const regenerateSectionWithCRO = async (
   currentHtml: string = ""
 ): Promise<string> => callProxy("regenerateSectionWithCRO", ensureArgs([sectionType, options, expert, product, currentHtml]));
 
-export const generateStudioImage = async (config: any): Promise<any> =>
-  callProxy("generateStudioImage", ensureArgs([config]));
+export const generateStudioImage = async (
+  base64: string | null,
+  prompt: string,
+  style: VisualStyle,
+  ratio: ImageAspectRatio,
+  quality: 'standard' | 'ultra',
+  format: ImageExportFormat,
+  qlt: number,
+  preset: AssetPreset,
+  strictReference: boolean,
+  adCopy?: string,
+  adType?: string,
+  creativeMode: CreativeMode = 'organic'
+): Promise<any> =>
+  callProxy("generateStudioImage", ensureArgs([base64, prompt, style, ratio, quality, format, qlt, preset, strictReference, adCopy, adType, creativeMode]));
 
 export const analyzeExternalProduct = async (url: string): Promise<any> =>
   callProxy("analyzeExternalProduct", ensureArgs([url]));

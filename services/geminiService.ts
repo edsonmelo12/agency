@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { PageType } from "../types.ts";
-import type { GenerationOptions, Section, Producer, ProductInfo, StrategySuggestion, ImageAspectRatio, VisualStyle, Ebook, EbookChapter, VslScript, SeoSettings, AssetPreset, ImageExportFormat, EbookConfig, PaidCampaignInput, PaidCampaignPlan, AiPlanResult, ImageFallbackReason, FunnelStage } from "../types.ts";
+import type { GenerationOptions, Section, Producer, ProductInfo, StrategySuggestion, ImageAspectRatio, VisualStyle, Ebook, EbookChapter, VslScript, SeoSettings, AssetPreset, ImageExportFormat, EbookConfig, PaidCampaignInput, PaidCampaignPlan, AiPlanResult, ImageFallbackReason, FunnelStage, CreativeMode } from "../types.ts";
 
 export interface ApiKeyLeakDetail {
   message: string;
@@ -76,8 +76,9 @@ const isQuotaError = (err: any) => {
 };
 
 const isOtherImageError = (err: any) => /OTHER/i.test(extractErrorMessage(err));
+const isNoImageError = (err: any) => /NO_IMAGE/i.test(extractErrorMessage(err));
 
-const shouldFallbackImageModel = (err: any) => isQuotaError(err) || isOtherImageError(err);
+const shouldFallbackImageModel = (err: any) => isQuotaError(err) || isOtherImageError(err) || isNoImageError(err);
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -136,6 +137,30 @@ const cleanJsonResponse = (text: string): string => {
   }
 
   return cleaned;
+};
+
+const creativeGuidance: Record<CreativeMode, { reference: string; fallback: string; caption: string; integrationInstruction: string }> = {
+  organic: {
+    reference: "Use a referência real como âncora, compondo um estúdio artesanal iluminado, com madeira, fios e pequenos sinais de comunidade (bilhetes, certificados) ao fundo.",
+    fallback: "Imagine um atelier iluminado ao amanhecer. Coloque o produto no centro de uma mesa com bolas de lã, ferramentas e plantas, com tecidos e luz dourada, e adicione provas sutis como manuscritos e medalhas.",
+    caption: "Conte a história do artesão através de texturas, luz e comunidade.",
+    integrationInstruction:
+      "Integre o produto à cena como um único plano: evite colagens, reconstrua sombras suaves e elementos compostos ao redor para parecer um único clique editorial, ignore o fundo original e redesenhe o produto no novo cenário em vez de colar a imagem original."
+  },
+  paid: {
+    reference: "Destaque o produto com selo 'Garantia 30 dias', iluminação precisa e elementos de prova (troféus, certificados, carimbos) no fundo.",
+    fallback: "Crie um retrato clean de estúdio com o produto central, selo 'Garantia 30 dias', objetos que sugerem resultados e tipografia discreta com CTA.",
+    caption: "Reforce autoridade e confiança com iluminação controlada.",
+    integrationInstruction:
+      "Faça o produto e o fundo viverem no mesmo espaço; inclua reflexos, sombras e fundos suaves em vez de sobrepor a imagem, descarte qualquer cena pré-existente e redesenhe o produto com a nova iluminação em vez de simplesmente colar o recorte."
+  },
+  generic: {
+    reference: "Monte um moodboard com o produto entre objetos de lifestyle (xícaras, cadernos, plantas) e texturas da paleta da marca.",
+    fallback: "Gere uma composição abstrata com o produto flutuando sobre superfícies texturizadas (tinta, papel artesanal) e grafismos minimalistas como 'companheiro de criação'.",
+    caption: "Estimule o sentimento de rotina criativa sem vender diretamente.",
+    integrationInstruction:
+      "Trate o produto como um elemento integrado: use gradientes, camadas translúcidas e grafismos para fundir o objeto à composição, deixando de lado o fundo original e redesenhando o produto para que pareça parte do novo ambiente."
+  }
 };
 
 /**
@@ -1533,7 +1558,8 @@ export const generateStudioImage = async (
   preset: AssetPreset,
   strictRef: boolean = false,
   adCopy?: string,
-  adType?: string
+  adType?: string,
+  creativeMode: CreativeMode = 'organic'
 ): Promise<{
   url: string;
   model: string;
@@ -1554,15 +1580,30 @@ export const generateStudioImage = async (
     return supported.includes(r) ? r : "1:1";
   };
 
+  const guidance = creativeGuidance[creativeMode] || creativeGuidance.organic;
+  const scenarioText = base64 ? guidance.reference : guidance.fallback;
+  const referenceInstructionStrict =
+    'STRICT: preserve exact shape, texture, colors, proportions, labels/logos, materials, and identity. Do NOT add, remove, alter, or embellish any part of the product. Do NOT add text, stickers, highlights, or attachments on the product. Do NOT occlude the product. Only the surrounding environment may change, and the original background must be discarded so a fresh scenario can be rebuilt.';
+  const referenceInstructionFlexible =
+    'Use the reference as the anchor for the product identity; keep its proportions, materials and lighting cues while placing it naturally into a new scenario that matches the requested style, rebuilding shadows and perspective so it feels like a single editorial photo.';
+  const backgroundResetInstruction = strictRef
+    ? 'Discard the original background completely; rebuild shadows and lighting as if the product was re-shot in a brand-new scene.'
+    : 'Treat the reference as a cutout with new shadows, reflections, and lighting so the whole environment feels like one editorial photograph.';
+  const referenceInstruction = strictRef ? referenceInstructionStrict : '';
+  const promptContext = prompt || scenarioText;
+  const promptContextWithFlexible = base64 && !strictRef
+    ? `${promptContext} ${referenceInstructionFlexible}`
+    : promptContext;
+  const integrationText = guidance.integrationInstruction;
+
   const finalPrompt = base64
-    ? `Main subject: The product in the reference image. ${
-        strictRef
-          ? 'STRICT: preserve exact shape, texture, colors, proportions, labels/logos, materials, and identity. Do NOT add, remove, alter, or embellish any part of the product. Do NOT add text, stickers, highlights, or attachments on the product. Do NOT occlude the product. Only the background and lighting around it may change.'
-          : 'Use the reference as primary anchor; keep product identity highly consistent.'
-      } Style: ${
-        strictRef ? 'Neutral studio product photography' : `Professional ${style}`
-      }. Context: ${prompt || 'Clean background, subtle props allowed but must not touch or cover the product.'} Preset: ${preset}. NO TEXT, NO TYPOGRAPHY, NO LETTERS.`
-    : `Professional ${style} image. Subject: ${prompt}. Preset: ${preset}. Aspect Ratio: ${ratio}. High quality lighting. NO TEXT, NO TYPOGRAPHY, NO LETTERS.`;
+    ? `Main subject: The product in the reference image. ${referenceInstruction} Style: ${strictRef ? 'Neutral studio product photography' : `Professional ${style}`}. Context: ${promptContextWithFlexible}. Preset: ${preset}. NO TEXT, NO TYPOGRAPHY, NO LETTERS. ${integrationText} ${guidance.caption}`
+    : `${scenarioText} Professional ${style} image. Subject: ${prompt || 'Clean background, subtle props allowed but must not touch or cover the product.'}. Preset: ${preset}. Aspect Ratio: ${ratio}. High quality lighting. NO TEXT, NO TYPOGRAPHY, NO LETTERS. ${integrationText} ${guidance.caption}`;
+
+  if (process.env.DEBUG_ESTUDIO_PROMPT === '1') {
+    const logTag = base64 ? '[EstudioAI reference prompt]' : '[EstudioAI prompt]';
+    console.debug(`${logTag} ${finalPrompt}`);
+  }
 
   const buildContents = (useBase64: boolean): any => {
     const parts: any[] = [{ text: finalPrompt }];
@@ -1588,7 +1629,7 @@ export const generateStudioImage = async (
     return config;
   };
 
-  const run = async (modelName: string, useBase64: boolean, overrideConfig?: Record<string, any>) => {
+const run = async (modelName: string, useBase64: boolean, overrideConfig?: Record<string, any>) => {
     const response = await withRetry(
       () =>
         ai.models.generateContent({

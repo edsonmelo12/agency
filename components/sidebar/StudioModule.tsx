@@ -42,7 +42,7 @@ const StudioModule: React.FC<Props> = ({ activeProduct, onGenerateImage, onSyncC
   const [preset, setPreset] = useState<AssetPreset>('Custom');
   const [exportFormat, setExportFormat] = useState<ImageExportFormat>('image/webp');
   const [exportQuality, setExportQuality] = useState(0.85);
-  const [strictReference, setStrictReference] = useState(true);
+  const [strictReference, setStrictReference] = useState(false);
   
   const [pendingAdCopy, setPendingAdCopy] = useState<string | undefined>();
   const [pendingAdType, setPendingAdType] = useState<string | undefined>();
@@ -168,8 +168,7 @@ const StudioModule: React.FC<Props> = ({ activeProduct, onGenerateImage, onSyncC
     
     // Se o produto ativo tiver uma imagem real, usa ela como base automaticamente
     if (activeProduct?.imageUrl) {
-      setBaseImage(activeProduct.imageUrl);
-      setStrictReference(true);
+      handleBaseImage(activeProduct.imageUrl);
     }
     
     setActiveTab('generate');

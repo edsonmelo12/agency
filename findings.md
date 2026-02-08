@@ -20,3 +20,6 @@
 4. **Medidas de controle de tokens**
    - Equacionar o uso de `progress.md` e `findings.md` para evitar recontextualizações repetidas.
    - Sempre apontar os prompts para os arquivos específicos em vez de reenviar o `CONTEXT.md` inteiro.
+5. **Estúdio AI e integração de referência**
+   - Ajustamos o prompt interno (`creativeGuidance`) para instruções mais claras sobre ignorar o fundo original, reconstruir sombras e colocar o produto em um novo cenário alinhado ao modo criativo escolhido.
+   - Documentar esse processo em `DOCS/estudio-ai-process.md` e garantir o registro no `progress.md` antes da próxima fase.

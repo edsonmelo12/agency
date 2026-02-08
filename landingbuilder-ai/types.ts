@@ -4,63 +4,28 @@
  * Essas interfaces definem o contrato de dados entre os serviços de IA e a interface do usuário.
  */
 
-export const PageType = {
-  SALES: 'SALES', // Foco em conversão direta
-  INSTITUTIONAL: 'INSTITUTIONAL' // Foco em autoridade e informações
-} as const;
-
-export type PageType = (typeof PageType)[keyof typeof PageType];
+export enum PageType {
+  SALES = 'SALES', // Foco em conversão direta
+  INSTITUTIONAL = 'INSTITUTIONAL' // Foco em autoridade e informações
+}
 
 export type FontPair = 'Modern' | 'Elegant' | 'Tech' | 'Minimal';
 export type BrandTone = 'Persuasive' | 'Professional' | 'Friendly' | 'Technical' | 'Urgent';
-export type VisualPreset = 'standard' | 'agency-premium';
-export type VisualScale = 'compact' | 'balanced' | 'large';
 
-export type ImageAspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '2:3' | '1.91:1';
-export type VisualStyle =
-  | 'Product Commercial'
-  | 'Minimalist'
-  | 'Luxury'
-  | 'Nature'
-  | 'Cyberpunk'
-  | 'Lifestyle'
-  | 'Photorealistic'
-  | 'Social Editorial'
-  | 'Social Impact'
-  | 'Social Tech';
+export type ImageAspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '2:3';
+export type VisualStyle = 'Product Commercial' | 'Minimalist' | 'Luxury' | 'Nature' | 'Cyberpunk' | 'Lifestyle' | 'Photorealistic';
 export type ImageExportFormat = 'image/png' | 'image/jpeg' | 'image/webp';
-
-export type EbookType = 'lead_magnet' | 'principal';
-export type EbookDepth = 'short' | 'medium' | 'deep';
-export type EbookCtaStyle = 'soft' | 'direct';
-
-export interface EbookConfig {
-  type: EbookType;
-  depth: EbookDepth;
-  ctaStyle: EbookCtaStyle;
-  introMaxPages: 1;
-  exerciseFrequency: 'every_2' | 'every_1';
-  funnelAlignment: true;
-}
 
 /**
  * Predefinições para tamanhos de ativos de marketing comuns.
  */
-export type AssetPreset =
-  | 'Ebook Cover'
-  | 'Facebook Cover'
-  | 'Instagram Story'
-  | 'VSL Thumbnail'
-  | 'Google Display'
-  | 'LinkedIn Banner'
-  | 'IG Feed'
-  | 'IG Portrait'
-  | 'IG Story'
-  | 'Reels Cover'
-  | 'TikTok 9:16'
-  | 'YouTube Thumbnail'
-  | 'LinkedIn Post'
-  | 'Facebook Post'
+export type AssetPreset = 
+  | 'Ebook Cover' 
+  | 'Facebook Cover' 
+  | 'Instagram Story' 
+  | 'VSL Thumbnail' 
+  | 'Google Display' 
+  | 'LinkedIn Banner' 
   | 'Custom';
 
 /**
@@ -109,7 +74,7 @@ export interface Producer {
   tone: BrandTone;
   socialLinks: SocialLinks;
   brandKit: BrandKit;
-  testimonials?: string[];
+  testimonials?: string[]; 
   createdAt: number;
 }
 
@@ -122,17 +87,13 @@ export interface ProductInfo {
   name: string;
   description: string; // Promessa única
   price: string;
-  anchorPrice?: string; // Preço cheio para ancoragem
-  anchorSavings?: string; // Economia percebida
   isExternal: boolean;
   externalUrl?: string;
   learningGoals: string; // O que o aluno aprende (Base para o E-book)
   imageUrl?: string;
   guaranteeDays?: number;
   bonusDescription?: string;
-  uniqueMechanism?: string; // Por que isso funciona (mecanismo único)
   testimonials?: string[];
-  proofStats?: string; // Provas concretas (números/selos/casos)
   scarcityText?: string;
   faq?: { question: string; answer: string; }[];
   persona: Persona;
@@ -159,12 +120,10 @@ export interface EbookChapter {
   title: string;
   notes: string; // Orientações da pauta
   content: string; // Conteúdo redigido
-  exerciseRequired?: boolean;
   imageUrl?: string;
   imagePrompt?: string;
   layout: 'standard' | 'visual-opener' | 'two-columns';
   status: 'pending' | 'generating' | 'completed';
-  reviewedAt?: number;
 }
 
 /**
@@ -180,7 +139,6 @@ export interface Ebook {
   chapters: EbookChapter[];
   coverPrompt: string;
   coverImageUrl?: string;
-  config?: EbookConfig;
   visualSettings: {
     fontFamily: 'sans' | 'serif' | 'mono' | 'display';
     theme: 'clean' | 'sepia' | 'dark' | 'soft-blue' | 'premium-black';
@@ -203,10 +161,6 @@ export interface VslScript {
   thumbnailUrl?: string;
 }
 
-export type ImageFallbackReason = 'quota' | 'model' | 'reference' | 'other';
-
-export type CreativeMode = 'organic' | 'paid' | 'generic';
-
 export interface StudioImage {
   id: string;
   url: string;
@@ -217,10 +171,6 @@ export interface StudioImage {
   format: ImageExportFormat;
   quality: number;
   timestamp: number;
-  modelUsed?: string;
-  usedReference?: boolean;
-  fallbackUsed?: boolean;
-  fallbackReason?: ImageFallbackReason;
   adCopy?: string;
   adType?: string;
 }
@@ -235,10 +185,6 @@ export interface ActiveElement {
   src?: string;
   href?: string;
   backgroundColor?: string;
-  color?: string;
-  fontSize?: string;
-  lineHeight?: string;
-  textAlign?: string;
   rect: {
     top: number;
     left: number;
@@ -251,126 +197,16 @@ export interface Project {
   id: string;
   productId: string;
   name: string;
-  versionName?: string;
-  tags?: string[];
-  isPrimary?: boolean;
   sections: Section[];
   options: any;
   createdAt: number;
   updatedAt: number;
 }
 
-export interface PaidCampaignInput {
-  objective: string;
-  ticket: string;
-  segment: string;
-  pain: string;
-  mechanism?: string;
-  promise?: string;
-  channel: string;
-  secondaryChannel?: string;
-  assets: {
-    hasPv: boolean;
-    hasEbook: boolean;
-    hasProof: boolean;
-  };
-  tone: string;
-  primaryMetric?: string;
-  budget?: string;
-}
-
-export interface PaidCampaignPlan {
-  summary: string;
-  funnel: {
-    top: string;
-    middle: string;
-    bottom: string;
-  };
-  angles: string[];
-  creatives: Array<{ format: string; goal: string; notes: string }>;
-  copy: { headline: string; body: string; cta: string };
-  checklist: string[];
-  nextSteps: string[];
-}
-
-export type FunnelStage = 'Topo' | 'Meio' | 'Fundo';
-
-export interface CreativeIdea {
-  type: string;
-  angle: string;
-  adCopy: string;
-  imagePrompt: string;
-  visualStyle: string;
-  stage?: FunnelStage;
-  variant?: number;
-  cta?: string;
-  wordCount?: number;
-  visualPrompts?: string[];
-  objective?: string;
-  awarenessLevel?: string;
-  origin?: 'ia' | 'manual';
-  intention?: string;
-  format?: string;
-  tags?: string[];
-}
-
-export interface StrategySuggestion {
-  id: string;
-  stage: FunnelStage;
-  title: string;
-  objective: string;
-  summary: string;
-  segments: CampaignSegment[];
-  metrics: string[];
-  tags: string[];
-  creative: {
-    headline: string;
-    body: string;
-    cta: string;
-  };
-  budgetPerDay: number;
-  utmTemplate: string;
-  checklistAdditions: string[];
-}
-
-export interface CampaignSegment {
-  name: string;
-  focus: string;
-  budget: string;
-}
-
-export interface BudgetSimulation {
-  label: string;
-  budget: string;
-  cpcEstimate: string;
-}
-
-export interface BuilderPlan {
-  campaignName: string;
-  objective: string;
-  budgetPerDay: string;
-  segments: CampaignSegment[];
-  checklist: string[];
-  simulations: BudgetSimulation[];
-  utmTemplate: string;
-  providerName: 'Gemini' | 'OpenRouter' | 'Unknown';
-  providerConfidence: number;
-  note?: string;
-}
-
-export interface WebhookConfig {
-  id: string;
-  name: string;
-  url: string;
-  event: 'lead' | 'purchase' | 'page_view';
-  active: boolean;
-}
-
 export interface MarketingSettings {
   metaPixelId?: string;
   googleAnalyticsId?: string;
   tiktokPixelId?: string;
-  webhooks?: WebhookConfig[];
 }
 
 export interface SeoSettings {
@@ -385,39 +221,12 @@ export interface PromptLibraryItem {
   content: string;
 }
 
-export interface AiFallbackLog {
-  timestamp: number;
-  error: string;
-  previous: 'Gemini' | 'OpenRouter' | 'Unknown';
-  current: 'Gemini' | 'OpenRouter' | 'Unknown';
-  message?: string;
-}
-
-export interface AiPlanResult {
-  plan: PaidCampaignPlan;
-  provider: 'Gemini' | 'OpenRouter';
-  notice?: string;
-}
-
 export interface Template {
   id: string;
   name: string;
   category: 'Sales' | 'Institutional';
   thumbnailColor: string;
   sections: Section[];
-}
-
-export type DesignSystemStrength = 'light' | 'medium' | 'strong';
-
-export interface DesignSystemConfig {
-  segment: string;
-  style: string;
-  strength: DesignSystemStrength;
-  globalRules: string;
-  segmentSystem: string;
-  projectOverride: string;
-  sectionOverrides: Record<string, string>;
-  nichePreset?: 'auto' | 'artesanato' | 'saude-mental';
 }
 
 /**
@@ -430,14 +239,8 @@ export interface GenerationOptions {
   backgroundColor: 'light' | 'dark' | 'neutral';
   fontPair: FontPair;
   tone: BrandTone;
-  visualPreset: VisualPreset;
-  visualScale: VisualScale;
   prompt: string;
   referenceUrl: string;
-  regenMode?: 'full' | 'copy' | 'layout' | 'style';
-  creativeFreedom?: 'low' | 'medium' | 'high';
-  authorLayoutMode?: 'fixed' | 'free';
-  designSystem?: DesignSystemConfig;
   extractionFlags: {
     structure: boolean;
     copy: boolean;
