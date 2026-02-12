@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { readAuthToken } from '../../services/authStorage';
+import { authorizedFetch, SessionExpiredError } from '../../services/authorizedFetch';
+import { clearAuthSession } from '../../services/authSession';
 
 export type UserRow = {
   id: string;
@@ -18,8 +20,6 @@ type FormState = {
   password: string;
   role: 'user' | 'admin';
 };
-
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 
 export const parseDate = (value?: string | null) => {
   if (!value) return '—';
@@ -75,38 +75,26 @@ export const UsersModuleProvider: React.FC<{ uiTheme: 'light' | 'dark'; children
   const setSession = (newToken: string | null, user: UserRow | null) => {
     setToken(newToken);
     setAccount(user);
-    if (newToken) {
-      try {
-        window.localStorage.setItem('lb_admin_token', newToken);
-      } catch {
-        // ignore
-      }
-    } else {
-      try {
-        window.localStorage.removeItem('lb_admin_token');
-      } catch {
-        // ignore
-      }
-    }
   };
 
-  const fetchJson = async (path: string, init: RequestInit = {}, withAuth = true) => {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...(init.headers as Record<string, string> | undefined),
-    };
-    if (withAuth && token) {
-      headers.Authorization = `Bearer ${token}`;
+  const fetchJson = async (path: string, init: RequestInit = {}) => {
+    const headers = new Headers(init.headers || {});
+    if (!headers.has('Content-Type')) {
+      headers.set('Content-Type', 'application/json');
     }
-    const response = await fetch(`${API_BASE}${path}`, { ...init, headers });
-    if (!response.ok) {
-      if (response.status === 401) {
-        setSession(null, null);
+    try {
+      const response = await authorizedFetch(path, { ...init, headers });
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
+      return response.json();
+    } catch (error: any) {
+      if (error instanceof SessionExpiredError) {
+        handleLogout();
         setStatusMessage('Sessão encerrada. Faça login novamente.');
       }
-      throw new Error(await parseError(response));
+      throw error;
     }
-    return response.json();
   };
 
   const reloadUsers = async () => {
@@ -208,7 +196,9 @@ export const UsersModuleProvider: React.FC<{ uiTheme: 'light' | 'dark'; children
   };
 
   const handleLogout = () => {
+    clearAuthSession();
     setSession(null, null);
+    setUsers([]);
     setStatusMessage('Logout realizado');
   };
 

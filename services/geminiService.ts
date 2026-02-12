@@ -1568,10 +1568,9 @@ export const generateStudioImage = async (
   fallbackReason?: ImageFallbackReason;
 }> => {
   const isHighRes = quality === 'ultra';
-  const primaryModel = isHighRes ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image';
-  const modelForRun = base64
-    ? (isHighRes ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image')
-    : primaryModel;
+  const alwaysFlash = quality === 'standard';
+  const primaryModel = alwaysFlash ? 'gemini-2.5-flash-image' : 'gemini-3-pro-image-preview';
+  const modelForRun = primaryModel;
   const ai = createGenAiClient();
 
   const mapRatio = (r: string): string => {
@@ -1583,9 +1582,9 @@ export const generateStudioImage = async (
   const guidance = creativeGuidance[creativeMode] || creativeGuidance.organic;
   const scenarioText = base64 ? guidance.reference : guidance.fallback;
   const referenceInstructionStrict =
-    'STRICT: preserve exact shape, texture, colors, proportions, labels/logos, materials, and identity. Do NOT add, remove, alter, or embellish any part of the product. Do NOT add text, stickers, highlights, or attachments on the product. Do NOT occlude the product. Only the surrounding environment may change, and the original background must be discarded so a fresh scenario can be rebuilt.';
+    'STRICT: preserve exact shape, texture, colors, proportions, labels/logos, materials, and identity. Do NOT add, remove, alter, or embellish any part of the product. Do NOT add text, stickers, highlights, or attachments on the product. Do NOT occlude the product. Rebuild the toy fully in the new environment, redrawing its knit pattern, shadow, and reflections so it looks like a single editorial capture, and discard the original background.';
   const referenceInstructionFlexible =
-    'Use the reference as the anchor for the product identity; keep its proportions, materials and lighting cues while placing it naturally into a new scenario that matches the requested style, rebuilding shadows and perspective so it feels like a single editorial photo.';
+    'Use the reference as the anchor for the product identity; keep its proportions, materials and lighting cues while placing it naturally into a new scenario that matches the requested style. Recreate the toy in the new environment by rebuilding shadows, reflections, and perspective so it feels like a single photographed object, and avoid the appearance of a pasted cutout or substitute character.';
   const backgroundResetInstruction = strictRef
     ? 'Discard the original background completely; rebuild shadows and lighting as if the product was re-shot in a brand-new scene.'
     : 'Treat the reference as a cutout with new shadows, reflections, and lighting so the whole environment feels like one editorial photograph.';
@@ -1597,7 +1596,7 @@ export const generateStudioImage = async (
   const integrationText = guidance.integrationInstruction;
 
   const finalPrompt = base64
-    ? `Main subject: The product in the reference image. ${referenceInstruction} Style: ${strictRef ? 'Neutral studio product photography' : `Professional ${style}`}. Context: ${promptContextWithFlexible}. Preset: ${preset}. NO TEXT, NO TYPOGRAPHY, NO LETTERS. ${integrationText} ${guidance.caption}`
+    ? `Main subject: The product in the reference image. ${referenceInstruction} Style: ${strictRef ? 'Neutral studio product photography' : `Professional ${style}`}. Context: ${promptContextWithFlexible}. Aspect Ratio: ${ratio}. Preset: ${preset}. NO TEXT, NO TYPOGRAPHY, NO LETTERS. ${integrationText} ${guidance.caption}`
     : `${scenarioText} Professional ${style} image. Subject: ${prompt || 'Clean background, subtle props allowed but must not touch or cover the product.'}. Preset: ${preset}. Aspect Ratio: ${ratio}. High quality lighting. NO TEXT, NO TYPOGRAPHY, NO LETTERS. ${integrationText} ${guidance.caption}`;
 
   if (process.env.DEBUG_ESTUDIO_PROMPT === '1') {
@@ -1616,12 +1615,19 @@ export const generateStudioImage = async (
   };
 
   const buildImageConfig = (modelName: string, useBase64: boolean, override?: Record<string, any>) => {
-    const config: Record<string, any> = {};
-    if (!useBase64) {
-      config.aspectRatio = mapRatio(ratio);
-    }
+    const mappedRatio = mapRatio(ratio);
+    const config: Record<string, any> = {
+      aspectRatio: mappedRatio
+    };
     if (modelName === 'gemini-3-pro-image-preview' && isHighRes) {
       config.imageSize = "2K";
+    }
+    if (process.env.DEBUG_ESTUDIO_PAYLOAD === '1') {
+      console.debug(
+        `[EstudioAI payload] model=${modelName} ratio=${mappedRatio} override=${JSON.stringify(
+          override || {}
+        )} promptLen=${finalPrompt.length}`
+      );
     }
     if (override) {
       Object.assign(config, override);
@@ -1630,14 +1636,15 @@ export const generateStudioImage = async (
   };
 
 const run = async (modelName: string, useBase64: boolean, overrideConfig?: Record<string, any>) => {
+    const imageConfig = buildImageConfig(modelName, useBase64, overrideConfig);
     const response = await withRetry(
       () =>
         ai.models.generateContent({
           model: modelName,
           contents: buildContents(useBase64),
           config: {
-            ...buildImageConfig(modelName, useBase64, overrideConfig),
-            responseModalities: [Modality.IMAGE]
+            responseModalities: [Modality.IMAGE],
+            imageConfig
           }
         }),
       2,

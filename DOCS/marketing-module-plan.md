@@ -115,7 +115,7 @@ O LandingBuilder AI já gera funis completos a partir de dados de expert e produ
 ## Status atual e documentação de apoio
 Com a implementação concluída temos:
 
-1. **Arsenal completo** – 1 copy hero + 4 variantes com CTA/headline/word-count limitados e 2+ prompts visuais por copy; o painel exibe métricas, permite regenerar e adicionar variações manuais via modal. Veja `DOCS/media-prompt-matrix.md` e `DOCS/custom-creative-modal-plan.md`.  
+1. **Arsenal completo** – 1 copy hero + 4 variantes com CTA/headline/word-count limitados e 2+ prompts visuais por copy; o painel exibe métricas, mantém as copies persistidas entre sessões e permite **adicionar novas copies** sem sobrescrever o arsenal, além de variações manuais via modal. Veja `DOCS/media-prompt-matrix.md` e `DOCS/custom-creative-modal-plan.md`.  
 2. **Diagnóstico e briefing para a IA** – o prompt reforçado, os checklists de qualidade e o fallback “Gerar variações extras” estão registrados em `DOCS/creative-briefing-for-ia.md` e `DOCS/creative-arsenal-diagnostic-plan.md`.  
 3. **Rastreio e execução** – o Kanban das tarefas restando para completar o arsenal (diagnóstico, prompt, fallback, persistência, métricas) vive em `DOCS/creative-arsenal-kanban.md`.
 

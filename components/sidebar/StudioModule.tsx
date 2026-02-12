@@ -114,6 +114,22 @@ const StudioModule: React.FC<Props> = ({ activeProduct, onGenerateImage, onSyncC
     }
   };
 
+  const handleBaseImage = (src: string) => {
+    if (!src) return;
+    fetch(src)
+      .then(response => response.blob())
+      .then(blob => new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error("Falha ao ler imagem de referência."));
+        reader.readAsDataURL(blob);
+      }))
+      .then(dataUrl => setBaseImage(dataUrl))
+      .catch(err => {
+        console.warn("Falha ao carregar imagem de produto:", err);
+      });
+  };
+
   const handleSync = async () => {
     setIsSyncing(true);
     try {
@@ -532,7 +548,7 @@ const StudioModule: React.FC<Props> = ({ activeProduct, onGenerateImage, onSyncC
             <Label color="blue">Preset de Destino</Label>
             <Select value={preset} onChange={(e) => handlePresetChange(e.target.value as AssetPreset)}>
               {presets.map(p => (
-                <option key={p.id} value={p.id}>{p.label}</option>
+                <option key={p.id} value={p.id}>{`${p.label} | ${p.ratio}`}</option>
               ))}
             </Select>
           </div>

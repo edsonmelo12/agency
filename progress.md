@@ -16,4 +16,17 @@
 - [ ] Checklist rodado em 2026-02-07T18:17:28Z por edsonrmjunior
 
 - [ ] Checklist rodado em 2026-02-07T20:57:42Z por edsonrmjunior
-- [ ] Estúdio AI: documentado o fluxo de criação em `DOCS/estudio-ai-process.md` e registrada a abordagem do creativeGuidance/fallback.
+- [ ] Estúdio AI Clássico: plano definido (componentes + prompt legado) e aguardando substituição; testes manuais focados nesse módulo estão pendentes.
+
+- [ ] Checklist rodado em 2026-02-08T18:34:33Z por edsonrmjunior
+
+- [ ] Checklist rodado em 2026-02-08T18:34:34Z por edsonrmjunior
+
+- [x] Checklist rodado em 2026-02-08T19:53:09Z por edsonrmjunior
+- [x] Checklist rodado em 2026-02-08T23:51:29Z por edsonrmjunior (executado antes de revisar Estúdio AI)
+
+- [ ] Checklist rodado em 2026-02-08T23:50:54Z por edsonrmjunior
+
+- [ ] 2026-02-12: Início da análise do módulo Marketing (card de Criativos vazio após reabrir). Próximo passo: rodar `scripts/context-checklist.sh` e mapear fluxo de persistência/seleção de estratégia.
+
+- [ ] Checklist rodado em 2026-02-12T16:35:19Z por edsonrmjunior

@@ -22,4 +22,13 @@
    - Sempre apontar os prompts para os arquivos específicos em vez de reenviar o `CONTEXT.md` inteiro.
 5. **Estúdio AI e integração de referência**
    - Ajustamos o prompt interno (`creativeGuidance`) para instruções mais claras sobre ignorar o fundo original, reconstruir sombras e colocar o produto em um novo cenário alinhado ao modo criativo escolhido.
-   - Documentar esse processo em `DOCS/estudio-ai-process.md` e garantir o registro no `progress.md` antes da próxima fase.
+ - Documentar esse processo em `DOCS/estudio-ai-process.md` e garantir o registro no `progress.md` antes da próxima fase.
+6. **Plano “Estúdio AI Clássico”**
+  - Renomear o módulo atual para “Estúdio AI Clássico” e manter o escopo limitado a ele, copiando o componente/prompt do `landingbuilder-ai`.
+  - O prompt legado (prompt direto + `base64`) deve substituir apenas o `services/geminiService.ts` associado ao Estúdio AI; nenhum outro módulo será tocado.
+ - Registrar em `progress.md`/`findings.md` que estamos aguardando a substituição e que os testes manuais devem focar apenas nesse módulo (render com/sem imagem e toggle “Preservar Produto”).
+  - Observação operacional: atualmente o `baseImage` só é enviado ao backend quando “Preservar Produto (Estrito)” está ativo (`shouldUseReference = strictRef && creativeMode === 'organic'`). Isso explica por que, com o estrito desligado, o modelo não recebe a referência (logo reproduz só o cenário) e, com o estrito ligado, acabamos compostando manualmente a imagem. Precisamos alterar essa lógica para enviar a referência sempre que houver um `baseImage` disponível e deixar o prompt do servidor cuidar do blending suave, reduzindo a dependência do modo estrito.
+
+7. **Contexto da sessão (12/02/2026)**
+  - Lidos `conductor/product.md`, `conductor/tech-stack.md`, `conductor/workflow.md` e `conductor/tracks/000-remodelacao/plan.md` antes da análise do bug no módulo Marketing.
+  - Solicitação atual: card de Criativos vem vazio após reabrir app; só carrega após clicar em “Selecionar Estratégia” no card de Estratégias Sugeridas. Precisamos revisar fluxo esperado e persistência.

@@ -16,7 +16,8 @@ import {
 } from './types';
 import { generateLandingPage, generateStudioImage, generateBookOutline, generateChapterContent, reviewChapterContent, generateVslScript, refineLandingPageContent, injectAssetIntoPage, generateCreativeCampaign, generateCreativeVariants, generateSeoFromSections, generateMarketingIdeas, generatePaidAdsPlan, generatePaidCampaignStrategy, regenerateSectionWithCRO, hydrateSectionContent, ApiKeyLeakDetail } from './services/genaiClient';
 import { getAllExperts, getProductsByExpert, getProjectsByProduct, saveProject, deleteProject, getAllStudioImages, saveStudioImage, deleteStudioImage, saveEbook, getEbooksByProduct, saveProduct, saveExpert, deleteEbook, saveVslScript, getVslScriptsByProduct, openDB, clearAllData } from './services/dbService';
-import { AuthUser, clearAuthToken, clearAuthUser, readAuthToken, readAuthUser, writeAuthToken, writeAuthUser } from './services/authStorage';
+import { AuthUser, readAuthToken, readAuthUser } from './services/authStorage';
+import { applyAuthSession, clearAuthSession } from './services/authSession';
 import { loginAdmin } from './services/authService';
 import AuthGate from './components/AuthGate';
 
@@ -284,6 +285,10 @@ const App: React.FC = () => {
   const [activeElement, setActiveElement] = useState<ActiveElement | null>(null);
   
   const saveTimeoutRef = useRef<number | null>(null);
+  const creativeSaveTimeoutRef = useRef<number | null>(null);
+  const skipCreativeAutosaveRef = useRef(false);
+  const skipCustomCreativeAutosaveRef = useRef(false);
+  const autoCreativeProjectRef = useRef<string | null>(null);
   const selectedStrategy = useMemo(
     () => STRATEGY_SUGGESTIONS.find((strategy) => strategy.id === selectedStrategyId) || null,
     [selectedStrategyId]
@@ -313,7 +318,8 @@ const App: React.FC = () => {
     marketingPlanProvider,
     selectedStrategyId,
     builderNote,
-    customCreatives
+    customCreatives,
+    creativeIdeas
   });
 
   useEffect(() => {
@@ -352,15 +358,13 @@ const App: React.FC = () => {
     setAuthLoading(true);
     setAuthError(null);
     try {
-      const response = await loginAdmin(email, password);
-      setAuthToken(response.accessToken);
-      setAuthUser(response.user);
-      setAuthStatus('Sessão iniciada');
-      writeAuthToken(response.accessToken);
-      writeAuthUser(response.user);
-      window.dispatchEvent(new Event('lb-auth-change'));
-      enterApp();
-    } catch (error: any) {
+    const response = await loginAdmin(email, password);
+    applyAuthSession({ accessToken: response.accessToken, refreshToken: response.refreshToken, user: response.user });
+    setAuthToken(response.accessToken);
+    setAuthUser(response.user);
+    setAuthStatus('Sessão iniciada');
+    enterApp();
+  } catch (error: any) {
       setAuthError(error.message || 'Falha na autenticação');
     } finally {
       setAuthLoading(false);
@@ -368,13 +372,11 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
-    clearAuthToken();
-    clearAuthUser();
+    clearAuthSession();
     setAuthToken(null);
     setAuthUser(null);
     setAuthStatus('Logout realizado');
     setRoute('landing');
-    window.dispatchEvent(new Event('lb-auth-change'));
   };
 
   useEffect(() => {
@@ -459,8 +461,10 @@ const App: React.FC = () => {
       setMarketingPlan(storedPlan);
       setBuilderNote(proj.options?.builderNote);
       setSelectedStrategyId(proj.options?.selectedStrategyId || STRATEGY_SUGGESTIONS[0]?.id || '');
+      skipCustomCreativeAutosaveRef.current = true;
       setCustomCreatives(proj.options?.customCreatives || []);
-      setCreativeIdeas([]);
+      skipCreativeAutosaveRef.current = true;
+      setCreativeIdeas(proj.options?.creativeIdeas || []);
     }
   };
 
@@ -502,7 +506,7 @@ const App: React.FC = () => {
     return true;
   };
 
-  const handleSaveProject = async (overrideSections?: Section[]) => {
+  const handleSaveProject = async (overrideSections?: Section[], opts?: { silent?: boolean }) => {
     if (!activeProduct) return;
     const finalSections = overrideSections || sections;
     const versionName = activeProject?.versionName || getDefaultVersionName();
@@ -525,19 +529,45 @@ const App: React.FC = () => {
         next.sort((a, b) => (a.updatedAt || a.createdAt) - (b.updatedAt || b.createdAt));
         return next;
       });
-      setSaveMessage("✅ Alterações Salvas");
+      if (!opts?.silent) setSaveMessage("✅ Alterações Salvas");
     } catch (e) {
-      setSaveMessage("❌ Erro ao Salvar");
+      if (!opts?.silent) setSaveMessage("❌ Erro ao Salvar");
     }
-    setTimeout(() => setSaveMessage(null), 2000);
+    if (!opts?.silent) setTimeout(() => setSaveMessage(null), 2000);
   };
 
   const debouncedSaveProject = (nextSections: Section[]) => {
     if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = window.setTimeout(() => {
-      handleSaveProject(nextSections);
+      handleSaveProject(nextSections, { silent: true });
     }, 1500);
   };
+
+  useEffect(() => {
+    if (skipCreativeAutosaveRef.current) {
+      skipCreativeAutosaveRef.current = false;
+      return;
+    }
+    if (skipCustomCreativeAutosaveRef.current) {
+      skipCustomCreativeAutosaveRef.current = false;
+      return;
+    }
+    if (!activeProject || !activeProduct) return;
+    if (!creativeIdeas.length && !customCreatives.length) return;
+    if (creativeSaveTimeoutRef.current) window.clearTimeout(creativeSaveTimeoutRef.current);
+    creativeSaveTimeoutRef.current = window.setTimeout(() => {
+      handleSaveProject(sections, { silent: true });
+    }, 1200);
+  }, [creativeIdeas, customCreatives, activeProject, activeProduct, sections]);
+
+  useEffect(() => {
+    if (!activeProject || !activeExpert || !activeProduct) return;
+    if (!selectedStrategyId) return;
+    if (creativeIdeas.length > 0 || customCreatives.length > 0) return;
+    if (autoCreativeProjectRef.current === activeProject.id) return;
+    autoCreativeProjectRef.current = activeProject.id;
+    fetchCreativeIdeas(selectedStrategy ?? undefined);
+  }, [activeProject, activeExpert, activeProduct, selectedStrategyId, selectedStrategy, creativeIdeas]);
 
   const selectPageVersion = (id: string) => {
     const target = projectVersions.find(p => p.id === id);
@@ -742,6 +772,7 @@ const App: React.FC = () => {
       backup.builderPlan = builderPlan;
       backup.selectedStrategyId = selectedStrategyId;
       backup.customCreatives = customCreatives;
+      backup.creativeIdeas = creativeIdeas;
       backup.activeExpertId = activeExpert?.id;
       backup.activeProductId = activeProduct?.id;
       downloadFile(JSON.stringify(backup, null, 2), `backup-full-${Date.now()}.json`, 'application/json');
@@ -958,7 +989,8 @@ const App: React.FC = () => {
     if (q === 'ultra') await checkApiKey();
     setIsLoading(true); 
     try { 
-      const shouldUseReference = strictRef && creativeMode === 'organic';
+      const requiresStrictReference = strictRef && creativeMode === 'organic';
+      const shouldUseReference = !!b && creativeMode === 'organic';
       let baseImage: string | null = shouldUseReference ? b : null;
       const resizeToDataUrl = (img: HTMLImageElement, maxSize: number, mimeType: string, quality?: number) =>
         new Promise<string>((resolve, reject) => {
@@ -972,7 +1004,7 @@ const App: React.FC = () => {
           const dataUrl = canvas.toDataURL(mimeType, quality);
           resolve(dataUrl);
         });
-      if (shouldUseReference && !baseImage) {
+      if (requiresStrictReference && !baseImage) {
         throw new Error("Referência obrigatória no modo estrito.");
       }
       if (shouldUseReference && baseImage && !baseImage.startsWith('data:')) {
@@ -1106,7 +1138,7 @@ const App: React.FC = () => {
 
       let result;
       try {
-        if (strictRef && baseImage) {
+        if (requiresStrictReference && baseImage) {
           const bgPrompt = `Background only. No product, no packaging, no replicas, no text. ${p || 'Clean studio backdrop, subtle props allowed in background only.'}`;
           const bgResult = await attemptGenerate(null, q, bgPrompt);
           const bgImage = await loadImage(bgResult.url);
@@ -1222,14 +1254,46 @@ const App: React.FC = () => {
     return generatePaidAdsPlan(activeExpert, activeProduct, objective, platform, budget);
   };
 
+  const mergeCreativeIdeas = (current: CreativeIdea[], incoming: CreativeIdea[]) => {
+    if (!incoming.length) return current;
+    const seen = new Set(
+      current.map(item =>
+        [
+          item.stage || '',
+          (item.adCopy || '').trim().toLowerCase(),
+          (item.cta || '').trim().toLowerCase(),
+          (item.imagePrompt || '').trim().toLowerCase()
+        ].join('::')
+      )
+    );
+    const next = [...current];
+    for (const item of incoming) {
+      const key = [
+        item.stage || '',
+        (item.adCopy || '').trim().toLowerCase(),
+        (item.cta || '').trim().toLowerCase(),
+        (item.imagePrompt || '').trim().toLowerCase()
+      ].join('::');
+      if (!seen.has(key)) {
+        seen.add(key);
+        next.push(item);
+      }
+    }
+    return next;
+  };
+
   const fetchCreativeIdeas = async (strategy?: StrategySuggestion): Promise<CreativeIdea[]> => {
     if (!activeExpert || !activeProduct) return [];
     setIsGeneratingCreatives(true);
     try {
       await checkApiKey();
       const ideas = await generateCreativeCampaign(sections, activeExpert, activeProduct, strategy);
-      setCreativeIdeas(ideas);
-      return ideas;
+      let merged: CreativeIdea[] = [];
+      setCreativeIdeas(prev => {
+        merged = mergeCreativeIdeas(prev, ideas);
+        return merged;
+      });
+      return merged.length ? merged : ideas;
     } catch (err) {
       console.error("Erro ao gerar criativos:", err);
       return [];

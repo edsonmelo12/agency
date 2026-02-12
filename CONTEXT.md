@@ -13,6 +13,7 @@ O **LandingBuilder AI** é um ecossistema de geração de funis de vendas "Full-
    - **BookBuilder**: Estrutura de e-book (capítulos) gerada com `thinkingBudget` para profundidade.
    - **VSL Studio**: Scripts de vídeo com suporte a Teleprompter e TTS (Text-to-Speech).
    - **Estúdio AI**: Geração de imagens contextuais com suporte a `googleSearch` para referências reais.
+   - **Criativos (Marketing)**: Arsenal de copies + prompts persistido no projeto. Ao abrir, carrega o último arsenal; gera automaticamente apenas quando não há copies (geradas ou manuais). O botão “Adicionar novas copies” sempre **acrescenta** ao arsenal, sem sobrescrever.
 
 ---
 

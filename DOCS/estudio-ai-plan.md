@@ -337,3 +337,10 @@ Tarefas:
 - [ ] Exportar PNG/JPEG/WEBP e abrir em navegador.
 - [ ] Sync de criativos sem expert/oferta.
 - [ ] Navegação rápida no acervo com muitos itens.
+
+## Substituição do Estúdio AI Clássico
+1. **Escopo limitado:** apenas o módulo Estúdio AI (painel + prompt + serviço). O restante da aplicação permanece intacto e o toggle “Preservar Produto (Estrito)” continua ativo no mesmo contexto.
+2. **Renomeação controlada:** copiar os arquivos `components/StudioPanel.tsx`, `services/geminiService.ts` e o prompt associado da pasta `landingbuilder-ai` para o diretório principal, aplicando o novo nome “Estúdio AI Clássico” em UI/JSON/strings. Os assets (`/assets/estudio-ai-visual.png`, base64, etc.) seguem junto com o prompt legado.
+3. **Prompt legado:** substituir o prompt atual (`creativeGuidance` + base64) pelo que estava em `landingbuilder-ai`, preservando instruções de reconstrução do produto no novo cenário. Garantir que o `services/geminiService.ts` usado pelo Estúdio AI referencie apenas esse prompt e não afete outros módulos (clear injection via flag/module name).
+4. **Testes manuais obrigatórios:** (a) render com cenário novo (Preservar Produto desligado). (b) ativar “Preservar Produto (Estrito)” e confirmar que a imagem de referência é integrada ao cenário e não apenas colada. (c) validar que os demais módulos (ex.: StudioModule, marketing) continuam funcionalmente inalterados após a troca.
+5. **Documentação e registros:** manter o escopo e as decisões registradas em `DOCS/estudio-ai-plan.md`, `findings.md` e `progress.md` antes de implementar. Anotar quaisquer riscos (ex.: prompt antigo referenciando base64) no `findings.md` para futuras auditorias.

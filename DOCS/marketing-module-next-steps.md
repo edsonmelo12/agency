@@ -15,7 +15,7 @@ Este documento resume as ações e skills necessárias que combinam com as suges
 
 ## 2. Frontend-design + ui-ux-pro-max — Validação visual e acessibilidade
 - Revisar o layout do `MarketingWorkflowPanel`: contraste dos cards, hierarquia visual entre os passos, estados de loading e botões de ação.
-- Mapear microinterações (hover, foco, loading) especialmente para os botões “Regenerar criativos” e ações do Builder (exportar/template/A-B).
+- Mapear microinterações (hover, foco, loading) especialmente para o botão “Adicionar novas copies” e ações do Builder (exportar/template/A-B).
 - Garantir responsividade e acessibilidade (textos legíveis, foco via teclado, cores high-contrast).
 
 ## 3. Paid-ads — Validação técnica e checklist de exportação

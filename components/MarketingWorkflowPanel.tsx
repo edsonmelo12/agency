@@ -740,7 +740,7 @@ const MarketingWorkflowPanel: React.FC<Props> = ({
           </div>
           <div className="flex flex-wrap gap-3">
             <Button variant="secondary" onClick={onRefreshCreatives} disabled={isGeneratingCreatives} className="text-[10px]">
-              {isGeneratingCreatives ? 'Regerando...' : 'Regenerar criativos'}
+              {isGeneratingCreatives ? 'Gerando...' : 'Adicionar novas copies'}
             </Button>
             <button
               type="button"

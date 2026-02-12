@@ -52,3 +52,9 @@ export const readAuthUser = (): AuthUser | null =>
 
 export const writeAuthUser = (user: AuthUser) => safeWrite(USER_KEY, JSON.stringify(user));
 export const clearAuthUser = () => safeRemove(USER_KEY);
+
+const REFRESH_KEY = 'lb_admin_refresh';
+
+export const readRefreshToken = (): string | null => safeRead(REFRESH_KEY, (v) => v);
+export const writeRefreshToken = (token: string) => safeWrite(REFRESH_KEY, token);
+export const clearRefreshToken = () => safeRemove(REFRESH_KEY);
